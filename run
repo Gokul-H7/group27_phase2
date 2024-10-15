@@ -1,0 +1,121 @@
+#!/bin/bash
+
+# Ensure the environment is set correctly.
+export NODE_ENV=production
+
+# Get the location of the script (supporting both Linux and Windows paths)
+PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Check if logs directory exists, and create it if not
+LOG_DIR="$PROJECT_DIR/logs"
+if [ ! -d "$LOG_DIR" ]; then
+  mkdir -p "$LOG_DIR"
+fi
+
+# Load environment variables from the .env file (if exists)
+if [ -f "$PROJECT_DIR/.env" ]; then
+  export $(grep -v '^#' "$PROJECT_DIR/.env" | xargs)
+fi
+
+# Get command from the first argument
+COMMAND=$1
+shift # Shift to remove the command from the arguments list
+
+# Ensure the command is provided
+if [ -z "$COMMAND" ]; then
+  echo "Usage: ./run <install|URL_FILE|test>"
+  exit 1
+fi
+
+case $COMMAND in
+  install)
+    echo "Installing project dependencies..."
+
+    # Install all dependencies including devDependencies
+    npm install
+    if [ $? -ne 0 ]; then
+      echo "Failed to install dependencies."
+      exit 1
+    fi
+
+    npx tsc
+    if [ $? -eq 0 ]; then
+      DEP_COUNT=$(npm list --depth=0 | grep -oP '(├──|└──) \S+' | wc -l)
+      echo "$DEP_COUNT dependencies installed"
+      exit 0
+    else
+      echo "Failed to install dependencies."
+      exit 1
+    fi
+    ;;
+
+  test)
+    echo "Running test suite with Vitest..."
+
+    # Run tests and save output to test-output.txt, stripping ANSI characters
+    npm test > test-output.txt 2>&1
+    TEST_EXIT_CODE=$?
+
+    # Check if the test-output.txt exists
+    TEST_OUTPUT="./test-output.txt"
+    if [ ! -f "$TEST_OUTPUT" ]; then
+      echo "Error: test-output.txt not found."
+      exit 1
+    fi
+
+    # Extract total tests and passed tests
+    TOTAL_TESTS=$(grep "Tests" $TEST_OUTPUT | awk '{print $4}')
+    TEST_PASSED=$(grep "Tests" test-output.txt | grep -oP "\(\K\d+(?=\))")
+
+    # Extract coverage percentage
+    COVERAGE_PERCENTAGE=$(grep -oP 'Coverage for lines \(\K\d+.\d+(?=%)' $TEST_OUTPUT)
+
+    # If extraction fails, set defaults to 0
+    if [ -z "$TOTAL_TESTS" ]; then
+      TOTAL_TESTS='fail'
+    fi
+
+    if [ -z "$TEST_PASSED" ]; then
+      TEST_PASSED='fail'
+    fi
+
+    if [ -z "$COVERAGE_PERCENTAGE" ]; then
+      COVERAGE_PERCENTAGE=0
+    fi
+
+    # Output the required structure
+    echo "Total: $TOTAL_TESTS"
+    echo "Passed: $TEST_PASSED"
+    echo "Coverage: $COVERAGE_PERCENTAGE%"
+    echo "$TEST_PASSED/$TOTAL_TESTS test cases passed. $COVERAGE_PERCENTAGE% line coverage achieved."
+
+    # Check test exit code
+    if [ $TEST_EXIT_CODE -eq 0 ]; then
+      exit 0
+    else
+      exit 1
+    fi
+    ;;
+  
+  *)
+    # Assume the command is a file path (for the URL file scenario)
+    URL_FILE=$COMMAND
+
+    if [ ! -f "$URL_FILE" ]; then
+      echo "Error: File '$URL_FILE' not found."
+      exit 1
+    fi
+
+    echo "Processing URLs from the file: $URL_FILE"
+
+    # Run the main program with the URL file, and output results to stdout
+    node ./dist/index.js "$URL_FILE"
+
+    if [ $? -eq 0 ]; then
+      exit 0
+    else
+      echo "Error running metrics calculations."
+      exit 1
+    fi
+    ;;
+esac
