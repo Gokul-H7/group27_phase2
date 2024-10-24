@@ -2,27 +2,38 @@ name: Deploy Lambda Function
 
 on:
   push:
-      paths:
-        - "lambdaHandlers/**"
-      branches: [main]
+    paths:
+      - "lambdaHandlers/**"
+    branches: [main]
     
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout the repository
       - uses: actions/checkout@v2
+
+      # Step 2: Install zip utility
       - name: Install zip tool
-        uses:  montudor/action-zip@v1
+        run: sudo apt-get install zip -y
+
+      # Step 3: Create a zip file containing the Lambda function code
       - name: Create Zip file for Lambda function
-        run: cd src && zip -r code.zip .
-      - name: AWS CLI v2
-        uses: imhedi/actions-awscli-v2@latest
+        run: |
+          cd lambdaHandlers && zip -r ../code.zip .
+
+      # Step 4: Configure AWS credentials using the official AWS action
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          args: "lambda update-function-code \
-            --function-name arn:aws:lambda:us-east-2:209479299089:function:LambdaHandlers
-            --zip-file fileb://src/code.zip"
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: "us-east-2"
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      # Step 5: Update Lambda function with the newly zipped code
+      - name: Deploy Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name arn:aws:lambda:us-east-2:209479299089:function:LambdaHandlers \
+            --zip-file fileb://code.zip
