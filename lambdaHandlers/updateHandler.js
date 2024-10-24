@@ -3,7 +3,7 @@ exports.updateHandler = async (event) => {
     console.log("Received event:", JSON.stringify(event, null, 2));
 
     // Extracting param`eters from the event
-    const name = event.name || "test";
+    const name = event.name || "World";
 
     // Simple response
     const response = {
