@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
 
-exports.handler = async (event) => {
+exports.uploadHandler = async (event) => {
     const { packageName, version, fileContent } = JSON.parse(event.body);
     const key = "packages/" + packageName + "/" + version + "/package.zip";
 
