@@ -1,9 +1,11 @@
-exports.updateHandler = async (event) => {
+exports.updateHandler = async (body) => {
     // Log the received event for debugging
-    console.log("Received event:", JSON.stringify(event, null, 2));
 
     // Extracting param`eters from the event
-    const name = event.body.name || "World";
+
+    console.log("Hello");
+    const name = body.name || "World";
+    console.log(name);
 
     // Simple response
     const response = {
