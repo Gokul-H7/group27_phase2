@@ -1,4 +1,5 @@
 const { updateHandler } = require("./updateHandler");
+const { uploadHandler } = require("./uploadHandler");
 
 exports.handler =async function name(event) {  //Basic handler function, serves as a Lambda functions main.
     
