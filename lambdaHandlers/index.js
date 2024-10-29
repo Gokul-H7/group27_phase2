@@ -2,6 +2,7 @@ const { updateHandler } = require("./updateHandler");
 
 exports.handler =async function name(event) {  //Basic handler function, serves as a Lambda functions main.
     
+    /*
     if (event.body && event.body !== "") {
         const body = JSON.parse(event.body);
     }
@@ -12,7 +13,9 @@ exports.handler =async function name(event) {  //Basic handler function, serves 
                 message: 'No body provided in JSON file' }),
         };
     }
+        */
     
+    const body = JSON.parse(event.body);
     //Log body and funct
     console.log(body);
     const funct = body.funct;
