@@ -78,7 +78,7 @@ async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
         }
 
         const repoName = repoNameMatch[1];
-        const downloadUrl = `https://api.github.com/repos/${repoName}/zipball/${version}`;
+        const downloadUrl = `https://api.github.com/repos/${repoName}/zipball`;
 
         console.log("Download URL:", downloadUrl);
         console.log("GitHub Token:", githubToken ? "Token present" : "Token missing");
