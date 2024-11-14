@@ -59,13 +59,12 @@ exports.handler = async (event) => {
 // Helper function to stream a GitHub repository zip file directly to S3
 async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
     return new Promise((resolve, reject) => {
-        const standardizedLink = githubLink.replace("https://github.com", "https://www.github.com");
-        const repoNameMatch = standardizedLink.match(/github\.com\/([^\/]+\/[^\/]+)$/);
+        const repoNameMatch = githubLink.match(/github\.com\/([^\/]+\/[^\/]+)$/);
         if (!repoNameMatch) return reject(new Error("Invalid GitHub link format"));
         const repoName = repoNameMatch[1];
         const downloadUrl = `https://api.github.com/repos/${repoName}/zipball`;
 
-        console.log("Initial Download URL:", downloadUrl);
+        console.log("Download URL:", downloadUrl);
 
         const options = {
             headers: {
@@ -74,11 +73,12 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
             }
         };
 
+        // Primary request to downloadUrl
         https.get(downloadUrl, options, (response) => {
-            if (response.statusCode === 301 && response.headers.location) {
-                console.log("Received permanent redirect, following to:", response.headers.location);
-
-                // Follow the permanent redirect
+            if (response.statusCode === 302 && response.headers.location) {
+                console.log("Received redirect, following to:", response.headers.location);
+                
+                // Follow the redirect
                 https.get(response.headers.location, options, (redirectedResponse) => {
                     if (redirectedResponse.statusCode !== 200) {
                         return reject(new Error(`Failed to download repository after redirect: ${redirectedResponse.statusCode} ${redirectedResponse.statusMessage}`));
@@ -93,19 +93,14 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
                         ContentType: 'application/zip'
                     };
 
-                    const s3Upload = s3.upload(uploadParams);
-
-                    redirectedResponse.pipe(s3Upload).on('error', (err) => {
-                        console.error("Streaming to S3 failed:", err);
-                        reject(new Error(`Streaming to S3 failed: ${err.message}`));
-                    });
-
-                    s3Upload.on('close', () => {
-                        console.log("S3 upload complete.");
-                        resolve({
-                            message: "S3 upload successful",
-                            s3Key: s3Key
-                        });
+                    s3.upload(uploadParams, (err, data) => {
+                        if (err) {
+                            console.error("S3 upload failed:", err);
+                            reject(new Error(`S3 upload failed: ${err.message}`));
+                        } else {
+                            console.log("S3 upload successful:", data);
+                            resolve(data);
+                        }
                     });
                 }).on('error', (error) => {
                     console.error("HTTPS redirect request failed:", error);
@@ -121,19 +116,14 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
                     ContentType: 'application/zip'
                 };
 
-                const s3Upload = s3.upload(uploadParams);
-
-                response.pipe(s3Upload).on('error', (err) => {
-                    console.error("Streaming to S3 failed:", err);
-                    reject(new Error(`Streaming to S3 failed: ${err.message}`));
-                });
-
-                s3Upload.on('close', () => {
-                    console.log("S3 upload complete.");
-                    resolve({
-                        message: "S3 upload successful",
-                        s3Key: s3Key
-                    });
+                s3.upload(uploadParams, (err, data) => {
+                    if (err) {
+                        console.error("S3 upload failed:", err);
+                        reject(new Error(`S3 upload failed: ${err.message}`));
+                    } else {
+                        console.log("S3 upload successful:", data);
+                        resolve(data);
+                    }
                 });
             } else {
                 console.error(`Failed to download repository: ${response.statusCode} ${response.statusMessage}`);
@@ -145,9 +135,6 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
         });
     });
 }
-
-
-
 
 
 // Helper function to retrieve the GitHub token from Secrets Manager
