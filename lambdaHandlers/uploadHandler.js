@@ -59,7 +59,9 @@ exports.handler = async (event) => {
 // Helper function to stream a GitHub repository zip file directly to S3
 async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
     return new Promise((resolve, reject) => {
-        const repoNameMatch = githubLink.match(/github\.com\/([^\/]+\/[^\/]+)$/);
+        // Ensure the GitHub link uses "https://www.github.com"
+        const standardizedLink = githubLink.replace("https://github.com", "https://www.github.com");
+        const repoNameMatch = standardizedLink.match(/github\.com\/([^\/]+\/[^\/]+)$/);
         if (!repoNameMatch) return reject(new Error("Invalid GitHub link format"));
         const repoName = repoNameMatch[1];
         const downloadUrl = `https://api.github.com/repos/${repoName}/zipball`;
@@ -73,12 +75,11 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
             }
         };
 
-        // Primary request to downloadUrl
         https.get(downloadUrl, options, (response) => {
-            if (response.statusCode === 302 && response.headers.location) {
-                console.log("Received redirect, following to:", response.headers.location);
-                
-                // Follow the redirect
+            if (response.statusCode === 301 && response.headers.location) {
+                console.log("Received permanent redirect, following to:", response.headers.location);
+
+                // Follow the permanent redirect
                 https.get(response.headers.location, options, (redirectedResponse) => {
                     if (redirectedResponse.statusCode !== 200) {
                         return reject(new Error(`Failed to download repository after redirect: ${redirectedResponse.statusCode} ${redirectedResponse.statusMessage}`));
@@ -135,6 +136,7 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
         });
     });
 }
+
 
 
 // Helper function to retrieve the GitHub token from Secrets Manager
