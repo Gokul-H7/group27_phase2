@@ -67,9 +67,10 @@ exports.handler = async (event) => {
 
 // Helper function to download a GitHub repository as a zip with token authentication
 // Helper function to download a GitHub repository as a zip with token authentication
+// Helper function to download a GitHub repository as a zip with token authentication
 async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
     return new Promise((resolve, reject) => {
-        // Construct the URL to download the repository as a zip archive
+        // Construct the URL to download the repository as a zip archive using the GitHub API
         const repoNameMatch = githubLink.match(/github\.com\/([^\/]+\/[^\/]+)$/);
         if (!repoNameMatch) {
             return reject(new Error("Invalid GitHub link format"));
@@ -88,17 +89,34 @@ async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
 
         // Make the HTTPS request to download the zip file
         https.get(downloadUrl, options, (response) => {
-            if (response.statusCode !== 200) {
-                return reject(new Error(`Failed to download repository: ${response.statusCode} ${response.statusMessage}`));
-            }
+            // Handle redirect manually if encountered
+            if (response.statusCode === 302 && response.headers.location) {
+                https.get(response.headers.location, options, (redirectedResponse) => {
+                    if (redirectedResponse.statusCode !== 200) {
+                        return reject(new Error(`Failed to download repository: ${redirectedResponse.statusCode} ${redirectedResponse.statusMessage}`));
+                    }
 
-            // Accumulate the response data (zip file)
-            const chunks = [];
-            response.on('data', (chunk) => chunks.push(chunk));
-            response.on('end', () => {
-                const zipFile = Buffer.concat(chunks); // Combine all chunks into a single buffer
-                resolve(zipFile);
-            });
+                    // Accumulate the response data (zip file)
+                    const chunks = [];
+                    redirectedResponse.on('data', (chunk) => chunks.push(chunk));
+                    redirectedResponse.on('end', () => {
+                        const zipFile = Buffer.concat(chunks); // Combine all chunks into a single buffer
+                        resolve(zipFile);
+                    });
+                }).on('error', (error) => {
+                    reject(new Error(`HTTPS redirect request failed: ${error.message}`));
+                });
+            } else if (response.statusCode === 200) {
+                // Accumulate the response data (zip file)
+                const chunks = [];
+                response.on('data', (chunk) => chunks.push(chunk));
+                response.on('end', () => {
+                    const zipFile = Buffer.concat(chunks); // Combine all chunks into a single buffer
+                    resolve(zipFile);
+                });
+            } else {
+                reject(new Error(`Failed to download repository: ${response.statusCode} ${response.statusMessage}`));
+            }
         }).on('error', (error) => {
             reject(new Error(`HTTPS request failed: ${error.message}`));
         });
