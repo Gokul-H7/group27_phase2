@@ -75,24 +75,35 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
 
         https.get(downloadUrl, options, (response) => {
             if (response.statusCode === 200) {
+                console.log("Started streaming download from GitHub to S3...");
+
                 const uploadParams = {
                     Bucket: s3BucketName,
                     Key: s3Key,
                     Body: response,
                     ContentType: 'application/zip'
                 };
+
                 s3.upload(uploadParams, (err, data) => {
-                    if (err) reject(new Error(`S3 upload failed: ${err.message}`));
-                    else resolve(data);
+                    if (err) {
+                        console.error("S3 upload failed:", err);
+                        reject(new Error(`S3 upload failed: ${err.message}`));
+                    } else {
+                        console.log("S3 upload successful:", data);
+                        resolve(data);
+                    }
                 });
             } else {
+                console.error(`Failed to download repository: ${response.statusCode} ${response.statusMessage}`);
                 reject(new Error(`Failed to download repository: ${response.statusCode} ${response.statusMessage}`));
             }
         }).on('error', (error) => {
+            console.error("HTTPS request failed:", error);
             reject(new Error(`HTTPS request failed: ${error.message}`));
         });
     });
 }
+
 
 // Helper function to retrieve the GitHub token from Secrets Manager
 async function getSecret(secretName) {
