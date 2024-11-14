@@ -28,7 +28,7 @@ exports.handler = async (event) => {
 
     // Determine S3 bucket and key structure
     const s3BucketName = 'packages-registry-27';
-    const s3Key = `${repoName}/${version}`;
+    const s3Key = `${repoName}/${version}/`;
 
     try {
         // Retrieve GitHub token from Secrets Manager
