@@ -21,7 +21,9 @@ exports.handler = async (event) => {
             body: JSON.stringify({ error: "Invalid GitHub link format" })
         };
     }
+    console.log("link = ", githubLink);
     const repoName = repoNameMatch[1];
+    console.log("repo = ", repoName);
 
     // Determine S3 bucket and key structure
     const s3BucketName = 'packages-registry-27';
