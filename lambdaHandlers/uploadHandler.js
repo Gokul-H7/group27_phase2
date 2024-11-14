@@ -88,13 +88,18 @@ function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
 
 // Helper function to retrieve the GitHub token from Secrets Manager
 async function getSecret(secretName) {
-    const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
-    if ('SecretString' in data) {
-        return data.SecretString;
+    try {
+        const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+        if (data && 'SecretString' in data) {
+            return data.SecretString;  // Return as a string
+        } else {
+            throw new Error("Secret not found or empty");
+        }
+    } catch (error) {
+        console.error(`Error retrieving secret ${secretName}:`, error);
+        throw new Error(`Failed to retrieve secret: ${error.message}`);
     }
-    throw new Error("Secret not found or improperly configured");
 }
-
 
 // const AWS = require('aws-sdk');
 // const s3 = new AWS.S3();
