@@ -33,7 +33,7 @@ exports.handler = async (event) => {
 
     try {
         // Retrieve GitHub token from Secrets Manager
-        const githubToken = await getSecret('GITHUB_TOKEN');
+        const githubToken = await getSecret('GITHUB_TOKEN_2');
 
         // Download the GitHub package as a zip file
         const zipFile = await downloadGitHubRepoAsZip(githubLink, version, githubToken);
