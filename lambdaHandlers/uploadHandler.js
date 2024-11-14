@@ -68,6 +68,7 @@ exports.handler = async (event) => {
 // Helper function to download a GitHub repository as a zip with token authentication
 // Helper function to download a GitHub repository as a zip with token authentication
 // Helper function to download a GitHub repository as a zip with token authentication
+// Helper function to download a GitHub repository as a zip with token authentication
 async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
     return new Promise((resolve, reject) => {
         // Construct the URL to download the repository as a zip archive using the GitHub API
@@ -79,6 +80,9 @@ async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
         const repoName = repoNameMatch[1];
         const downloadUrl = `https://api.github.com/repos/${repoName}/zipball/${version}`;
 
+        console.log("Download URL:", downloadUrl);
+        console.log("GitHub Token:", githubToken ? "Token present" : "Token missing");
+
         // Set up the options for the HTTPS request with the authorization header
         const options = {
             headers: {
@@ -89,8 +93,9 @@ async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
 
         // Make the HTTPS request to download the zip file
         https.get(downloadUrl, options, (response) => {
-            // Handle redirect manually if encountered
-            if (response.statusCode === 302 && response.headers.location) {
+            if (response.statusCode === 404) {
+                return reject(new Error("Repository or version not found (404)"));
+            } else if (response.statusCode === 302 && response.headers.location) {
                 https.get(response.headers.location, options, (redirectedResponse) => {
                     if (redirectedResponse.statusCode !== 200) {
                         return reject(new Error(`Failed to download repository: ${redirectedResponse.statusCode} ${redirectedResponse.statusMessage}`));
@@ -100,18 +105,17 @@ async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
                     const chunks = [];
                     redirectedResponse.on('data', (chunk) => chunks.push(chunk));
                     redirectedResponse.on('end', () => {
-                        const zipFile = Buffer.concat(chunks); // Combine all chunks into a single buffer
+                        const zipFile = Buffer.concat(chunks);
                         resolve(zipFile);
                     });
                 }).on('error', (error) => {
                     reject(new Error(`HTTPS redirect request failed: ${error.message}`));
                 });
             } else if (response.statusCode === 200) {
-                // Accumulate the response data (zip file)
                 const chunks = [];
                 response.on('data', (chunk) => chunks.push(chunk));
                 response.on('end', () => {
-                    const zipFile = Buffer.concat(chunks); // Combine all chunks into a single buffer
+                    const zipFile = Buffer.concat(chunks);
                     resolve(zipFile);
                 });
             } else {
