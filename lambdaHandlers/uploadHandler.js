@@ -59,14 +59,13 @@ exports.handler = async (event) => {
 // Helper function to stream a GitHub repository zip file directly to S3
 async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
     return new Promise((resolve, reject) => {
-        // Ensure the GitHub link uses "https://www.github.com"
         const standardizedLink = githubLink.replace("https://github.com", "https://www.github.com");
         const repoNameMatch = standardizedLink.match(/github\.com\/([^\/]+\/[^\/]+)$/);
         if (!repoNameMatch) return reject(new Error("Invalid GitHub link format"));
         const repoName = repoNameMatch[1];
         const downloadUrl = `https://api.github.com/repos/${repoName}/zipball`;
 
-        console.log("Download URL:", downloadUrl);
+        console.log("Initial Download URL:", downloadUrl);
 
         const options = {
             headers: {
@@ -136,6 +135,7 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
         });
     });
 }
+
 
 
 
