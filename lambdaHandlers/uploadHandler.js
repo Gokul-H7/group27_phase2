@@ -33,7 +33,7 @@ exports.handler = async (event) => {
 
     try {
         // Retrieve GitHub token from Secrets Manager
-        const githubToken = await getSecret('GITHUB_TOKEN');
+        const githubToken = await getSecret('GITHUB_TOKEN_2');
 
         // Stream the GitHub package directly to S3
         const s3Response = await streamToS3(githubLink, githubToken, s3BucketName, s3Key);
