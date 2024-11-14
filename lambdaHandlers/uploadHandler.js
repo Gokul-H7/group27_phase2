@@ -111,7 +111,8 @@ async function getSecret(secretName) {
     try {
         const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
         if (data && 'SecretString' in data) {
-            return data.SecretString;  // Return as a string
+            const secret = JSON.parse(data.SecretString); // Parse JSON string
+            return secret.GITHUB_TOKEN_2;  // Return the actual token
         } else {
             throw new Error("Secret not found or empty");
         }
@@ -120,6 +121,7 @@ async function getSecret(secretName) {
         throw new Error(`Failed to retrieve secret: ${error.message}`);
     }
 }
+
 
 // const AWS = require('aws-sdk');
 // const s3 = new AWS.S3();
