@@ -4,73 +4,113 @@ const s3 = new AWS.S3();
 const secretsManager = new AWS.SecretsManager();
 
 exports.handler = async (event) => {
-  try {
-    const { githubLink, version } = JSON.parse(event.body);
+    const { githubLink, version } = event;
 
-    // Extract the repository name from the GitHub URL
-    const repoNameMatch = githubLink.match(/github\.com\/([^/]+\/[^/]+)/);
+    if (!githubLink || !version) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: "Missing GitHub link or version number" })
+        };
+    }
+
+    // Extract repository name from GitHub link
+    const repoNameMatch = githubLink.match(/\/([^\/]+\/[^\/]+)$/);
     if (!repoNameMatch) {
-      throw new Error("Invalid GitHub URL format.");
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: "Invalid GitHub link format" })
+        };
     }
     const repoName = repoNameMatch[1];
-    const zipFileName = `${repoName.split('/')[1]}.zip`;
 
-    // Get GitHub token from Secrets Manager
-    const { SecretString } = await secretsManager.getSecretValue({ SecretId: 'GITHUB_TOKEN' }).promise();
-    const githubToken = JSON.parse(SecretString).GITHUB_TOKEN;
+    // Determine S3 bucket and key structure
+    const s3BucketName = 'packages-registry-27';
+    const zipFileName = `${repoName}-${version}.zip`;
+    const s3Key = `${repoName}/${version}/${zipFileName}`;
 
-    // Construct the GitHub API URL for downloading the zip archive
-    const zipUrl = `${githubLink}/archive/refs/heads/main.zip`;
+    try {
+        // Retrieve GitHub token from Secrets Manager
+        const githubToken = await getSecret('GITHUB_TOKEN');
 
-    // Fetch the zip file with authentication
-    const zipFileBuffer = await fetchZipFile(zipUrl, githubToken);
+        // Download the GitHub package as a zip file
+        const zipFile = await downloadGitHubRepoAsZip(githubLink, version, githubToken);
 
-    // Define the S3 key using the specified directory structure
-    const s3Key = `packages-registry-27/${repoName}/${version}/${zipFileName}`;
+        // Upload the zip file to S3 with the original name
+        await s3.putObject({
+            Bucket: s3BucketName,
+            Key: s3Key,
+            Body: zipFile,
+            ContentType: 'application/zip'
+        }).promise();
 
-    // Upload the zip file to S3
-    await s3.putObject({
-      Bucket: 'packages-registry-27',
-      Key: s3Key,
-      Body: zipFileBuffer,
-      ContentType: 'application/zip',
-    }).promise();
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: 'File uploaded successfully', s3Key }),
-    };
-  } catch (error) {
-    console.error("Error:", error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ message: 'Error processing request', error: error.message }),
-    };
-  }
+        return {
+            statusCode: 200,
+            body: JSON.stringify({
+                message: "Package uploaded successfully",
+                s3Key: s3Key
+            })
+        };
+    } catch (error) {
+        return {
+            statusCode: 500,
+            body: JSON.stringify({
+                error: "Failed to upload package",
+                details: error.message
+            })
+        };
+    }
 };
 
-// Helper function to download the zip file with authorization
-const fetchZipFile = (url, token) => {
-  return new Promise((resolve, reject) => {
-    const options = {
-      headers: {
-        'Authorization': `token ${token}`,
-        'User-Agent': 'aws-lambda',
-      }
-    };
+// Helper function to download a GitHub repository as a zip with token authentication
+function downloadGitHubRepoAsZip(githubLink, version, githubToken, redirectCount = 0) {
+    return new Promise((resolve, reject) => {
+        const repoUrl = `${githubLink}/archive/refs/tags/${version}.zip`;
+        
+        // Limit the number of redirects to prevent an infinite loop
+        if (redirectCount > 5) {
+            return reject(new Error("Too many redirects"));
+        }
 
-    https.get(url, options, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to get file, status code: ${response.statusCode}`));
-      }
+        const options = {
+            headers: {
+                'Authorization': `token ${githubToken}`,
+                'User-Agent': 'AWS-Lambda-Downloader'
+            }
+        };
 
-      const data = [];
-      response.on('data', (chunk) => data.push(chunk));
-      response.on('end', () => resolve(Buffer.concat(data)));
-    }).on('error', (err) => reject(err));
-  });
-};
+        https.get(repoUrl, options, (response) => {
+            if (response.statusCode === 302 && response.headers.location) {
+                // Follow the redirect
+                console.log(`Redirecting to ${response.headers.location}`);
+                downloadGitHubRepoAsZip(response.headers.location, version, githubToken, redirectCount + 1)
+                    .then(resolve)
+                    .catch(reject);
+            } else if (response.statusCode === 200) {
+                // Successful response, collect data
+                const data = [];
+                response.on('data', chunk => data.push(chunk));
+                response.on('end', () => resolve(Buffer.concat(data)));
+            } else {
+                reject(new Error(`Failed to download file, status code: ${response.statusCode}`));
+            }
+        }).on('error', (error) => reject(error));
+    });
+}
 
+// Helper function to retrieve the GitHub token from Secrets Manager
+async function getSecret(secretName) {
+    try {
+        const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+        if (data && 'SecretString' in data) {
+            return data.SecretString;  // Return as a string
+        } else {
+            throw new Error("Secret not found or empty");
+        }
+    } catch (error) {
+        console.error(`Error retrieving secret ${secretName}:`, error);
+        throw new Error(`Failed to retrieve secret: ${error.message}`);
+    }
+}
 
 // const AWS = require('aws-sdk');
 // const s3 = new AWS.S3();
