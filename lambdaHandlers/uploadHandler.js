@@ -33,25 +33,16 @@ exports.handler = async (event) => {
 
     try {
         // Retrieve GitHub token from Secrets Manager
-        const githubToken = await getSecret('GITHUB_TOKEN_2');
-        console.log("GitHub Token Retrieved: ", githubToken);
+        const githubToken = await getSecret('GITHUB_TOKEN');
 
-        // Download the GitHub package as a zip file
-        const zipFile = await downloadGitHubRepoAsZip(githubLink, version, githubToken);
-
-        // Upload the zip file to S3 with the original name
-        await s3.putObject({
-            Bucket: s3BucketName,
-            Key: s3Key,
-            Body: zipFile,
-            ContentType: 'application/zip'
-        }).promise();
+        // Stream the GitHub package directly to S3
+        const s3Response = await streamToS3(githubLink, githubToken, s3BucketName, s3Key);
 
         return {
             statusCode: 200,
             body: JSON.stringify({
                 message: "Package uploaded successfully",
-                s3Key: s3Key
+                s3Key: s3Response.Key
             })
         };
     } catch (error) {
@@ -65,25 +56,16 @@ exports.handler = async (event) => {
     }
 };
 
-// Helper function to download a GitHub repository as a zip with token authentication
-// Helper function to download a GitHub repository as a zip with token authentication
-// Helper function to download a GitHub repository as a zip with token authentication
-// Helper function to download a GitHub repository as a zip with token authentication
-async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
+// Helper function to stream a GitHub repository zip file directly to S3
+async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
     return new Promise((resolve, reject) => {
-        // Construct the URL to download the repository as a zip archive using the GitHub API
         const repoNameMatch = githubLink.match(/github\.com\/([^\/]+\/[^\/]+)$/);
-        if (!repoNameMatch) {
-            return reject(new Error("Invalid GitHub link format"));
-        }
-
+        if (!repoNameMatch) return reject(new Error("Invalid GitHub link format"));
         const repoName = repoNameMatch[1];
         const downloadUrl = `https://api.github.com/repos/${repoName}/zipball`;
 
         console.log("Download URL:", downloadUrl);
-        console.log("GitHub Token:", githubToken ? "Token present" : "Token missing");
 
-        // Set up the options for the HTTPS request with the authorization header
         const options = {
             headers: {
                 'Authorization': `token ${githubToken}`,
@@ -91,32 +73,17 @@ async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
             }
         };
 
-        // Make the HTTPS request to download the zip file
         https.get(downloadUrl, options, (response) => {
-            if (response.statusCode === 404) {
-                return reject(new Error("Repository or version not found (404)"));
-            } else if (response.statusCode === 302 && response.headers.location) {
-                https.get(response.headers.location, options, (redirectedResponse) => {
-                    if (redirectedResponse.statusCode !== 200) {
-                        return reject(new Error(`Failed to download repository: ${redirectedResponse.statusCode} ${redirectedResponse.statusMessage}`));
-                    }
-
-                    // Accumulate the response data (zip file)
-                    const chunks = [];
-                    redirectedResponse.on('data', (chunk) => chunks.push(chunk));
-                    redirectedResponse.on('end', () => {
-                        const zipFile = Buffer.concat(chunks);
-                        resolve(zipFile);
-                    });
-                }).on('error', (error) => {
-                    reject(new Error(`HTTPS redirect request failed: ${error.message}`));
-                });
-            } else if (response.statusCode === 200) {
-                const chunks = [];
-                response.on('data', (chunk) => chunks.push(chunk));
-                response.on('end', () => {
-                    const zipFile = Buffer.concat(chunks);
-                    resolve(zipFile);
+            if (response.statusCode === 200) {
+                const uploadParams = {
+                    Bucket: s3BucketName,
+                    Key: s3Key,
+                    Body: response,
+                    ContentType: 'application/zip'
+                };
+                s3.upload(uploadParams, (err, data) => {
+                    if (err) reject(new Error(`S3 upload failed: ${err.message}`));
+                    else resolve(data);
                 });
             } else {
                 reject(new Error(`Failed to download repository: ${response.statusCode} ${response.statusMessage}`));
@@ -127,14 +94,13 @@ async function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
     });
 }
 
-
 // Helper function to retrieve the GitHub token from Secrets Manager
 async function getSecret(secretName) {
     try {
         const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
         if (data && 'SecretString' in data) {
-            const secret = JSON.parse(data.SecretString); // Parse JSON string
-            return secret.GITHUB_TOKEN_2;  // Return the actual token
+            const secret = JSON.parse(data.SecretString);
+            return secret.GITHUB_TOKEN_2;
         } else {
             throw new Error("Secret not found or empty");
         }
@@ -143,32 +109,3 @@ async function getSecret(secretName) {
         throw new Error(`Failed to retrieve secret: ${error.message}`);
     }
 }
-
-
-// const AWS = require('aws-sdk');
-// const s3 = new AWS.S3();
-
-// exports.uploadHandler = async (body) => {
-//     const { packageName, version, fileContent } = body;
-//     const key = "packages/" + packageName + "/" + version + "/package.zip";
-
-//     const params = {
-//         Bucket: 'packages-registry-27',  // Replace with your bucket name
-//         Key: key,
-//         Body: Buffer.from(fileContent, 'base64'),  // Assuming base64 encoded content
-//         ContentType: 'application/zip',
-//     };
-
-//     try {
-//         await s3.putObject(params).promise();
-//         return {
-//             statusCode: 200,
-//             body: JSON.stringify({ message: 'Package uploaded successfully!' }),
-//         };
-//     } catch (err) {
-//         return {
-//             statusCode: 500,
-//             body: JSON.stringify({ error: err.message }),
-//         };
-//     }
-// };
