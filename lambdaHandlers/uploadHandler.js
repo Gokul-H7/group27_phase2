@@ -21,8 +21,9 @@ exports.handler = async (event) => {
             body: JSON.stringify({ error: "Invalid GitHub link format" })
         };
     }
-    console.log("link = ", githubLink);
+
     const repoName = repoNameMatch[1];
+    console.log("link = ", githubLink);
     console.log("repo = ", repoName);
 
     // Determine S3 bucket and key structure
@@ -64,7 +65,7 @@ exports.handler = async (event) => {
 };
 
 // Helper function to download a GitHub repository as a zip with token authentication
-function downloadGitHubRepoAsZip(githubLink, version, githubToken, redirectCount = 0) {
+function downloadGitHubRepoAsZip(githubLink, version, githubToken, redirectCount = 5) {
     return new Promise((resolve, reject) => {
         const repoUrl = `${githubLink}/archive/refs/tags/${version}.zip`;
         
