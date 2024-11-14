@@ -73,8 +73,40 @@ async function streamToS3(githubLink, githubToken, s3BucketName, s3Key) {
             }
         };
 
+        // Primary request to downloadUrl
         https.get(downloadUrl, options, (response) => {
-            if (response.statusCode === 200) {
+            if (response.statusCode === 302 && response.headers.location) {
+                console.log("Received redirect, following to:", response.headers.location);
+                
+                // Follow the redirect
+                https.get(response.headers.location, options, (redirectedResponse) => {
+                    if (redirectedResponse.statusCode !== 200) {
+                        return reject(new Error(`Failed to download repository after redirect: ${redirectedResponse.statusCode} ${redirectedResponse.statusMessage}`));
+                    }
+
+                    console.log("Started streaming download from GitHub to S3 after redirect...");
+
+                    const uploadParams = {
+                        Bucket: s3BucketName,
+                        Key: s3Key,
+                        Body: redirectedResponse,
+                        ContentType: 'application/zip'
+                    };
+
+                    s3.upload(uploadParams, (err, data) => {
+                        if (err) {
+                            console.error("S3 upload failed:", err);
+                            reject(new Error(`S3 upload failed: ${err.message}`));
+                        } else {
+                            console.log("S3 upload successful:", data);
+                            resolve(data);
+                        }
+                    });
+                }).on('error', (error) => {
+                    console.error("HTTPS redirect request failed:", error);
+                    reject(new Error(`HTTPS redirect request failed: ${error.message}`));
+                });
+            } else if (response.statusCode === 200) {
                 console.log("Started streaming download from GitHub to S3...");
 
                 const uploadParams = {
