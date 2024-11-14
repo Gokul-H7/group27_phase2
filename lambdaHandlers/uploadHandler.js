@@ -1,27 +1,125 @@
 const AWS = require('aws-sdk');
+const https = require('https');
 const s3 = new AWS.S3();
+const secretsManager = new AWS.SecretsManager();
 
-exports.uploadHandler = async (body) => {
-    const { packageName, version, fileContent } = body;
-    const key = "packages/" + packageName + "/" + version + "/package.zip";
+exports.handler = async (event) => {
+    const { githubLink, version } = event;
 
-    const params = {
-        Bucket: 'packages-registry-27',  // Replace with your bucket name
-        Key: key,
-        Body: Buffer.from(fileContent, 'base64'),  // Assuming base64 encoded content
-        ContentType: 'application/zip',
-    };
+    if (!githubLink || !version) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: "Missing GitHub link or version number" })
+        };
+    }
+
+    // Extract repository name from GitHub link
+    const repoNameMatch = githubLink.match(/\/([^\/]+\/[^\/]+)$/);
+    if (!repoNameMatch) {
+        return {
+            statusCode: 400,
+            body: JSON.stringify({ error: "Invalid GitHub link format" })
+        };
+    }
+    const repoName = repoNameMatch[1];
+
+    // Determine S3 bucket and key structure
+    const s3BucketName = 'packages-registry-27';
+    const zipFileName = `${repoName}-${version}.zip`;
+    const s3Key = `${repoName}/${version}/${zipFileName}`;
 
     try {
-        await s3.putObject(params).promise();
+        // Retrieve GitHub token from Secrets Manager
+        const githubToken = await getSecret('GITHUB_TOKEN');
+
+        // Download the GitHub package as a zip file
+        const zipFile = await downloadGitHubRepoAsZip(githubLink, version, githubToken);
+
+        // Upload the zip file to S3 with the original name
+        await s3.putObject({
+            Bucket: s3BucketName,
+            Key: s3Key,
+            Body: zipFile,
+            ContentType: 'application/zip'
+        }).promise();
+
         return {
             statusCode: 200,
-            body: JSON.stringify({ message: 'Package uploaded successfully!' }),
+            body: JSON.stringify({
+                message: "Package uploaded successfully",
+                s3Key: s3Key
+            })
         };
-    } catch (err) {
+    } catch (error) {
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: err.message }),
+            body: JSON.stringify({
+                error: "Failed to upload package",
+                details: error.message
+            })
         };
     }
 };
+
+// Helper function to download a GitHub repository as a zip with token authentication
+function downloadGitHubRepoAsZip(githubLink, version, githubToken) {
+    return new Promise((resolve, reject) => {
+        const repoUrl = `${githubLink}/archive/refs/tags/${version}.zip`;
+
+        const options = {
+            headers: {
+                'Authorization': `token ${githubToken}`,
+                'User-Agent': 'AWS-Lambda-Downloader'
+            }
+        };
+
+        https.get(repoUrl, options, (response) => {
+            if (response.statusCode !== 200) {
+                reject(new Error(`Failed to download file, status code: ${response.statusCode}`));
+                return;
+            }
+
+            const data = [];
+            response.on('data', chunk => data.push(chunk));
+            response.on('end', () => resolve(Buffer.concat(data)));
+        }).on('error', (error) => reject(error));
+    });
+}
+
+// Helper function to retrieve the GitHub token from Secrets Manager
+async function getSecret(secretName) {
+    const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+    if ('SecretString' in data) {
+        return data.SecretString;
+    }
+    throw new Error("Secret not found or improperly configured");
+}
+
+
+// const AWS = require('aws-sdk');
+// const s3 = new AWS.S3();
+
+// exports.uploadHandler = async (body) => {
+//     const { packageName, version, fileContent } = body;
+//     const key = "packages/" + packageName + "/" + version + "/package.zip";
+
+//     const params = {
+//         Bucket: 'packages-registry-27',  // Replace with your bucket name
+//         Key: key,
+//         Body: Buffer.from(fileContent, 'base64'),  // Assuming base64 encoded content
+//         ContentType: 'application/zip',
+//     };
+
+//     try {
+//         await s3.putObject(params).promise();
+//         return {
+//             statusCode: 200,
+//             body: JSON.stringify({ message: 'Package uploaded successfully!' }),
+//         };
+//     } catch (err) {
+//         return {
+//             statusCode: 500,
+//             body: JSON.stringify({ error: err.message }),
+//         };
+//     }
+// };
