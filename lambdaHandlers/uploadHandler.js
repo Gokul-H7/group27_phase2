@@ -65,7 +65,7 @@ exports.handler = async (event) => {
 };
 
 // Helper function to download a GitHub repository as a zip with token authentication
-function downloadGitHubRepoAsZip(githubLink, version, githubToken, redirectCount = 5) {
+function downloadGitHubRepoAsZip(githubLink, version, githubToken, redirectCount = 0) {
     return new Promise((resolve, reject) => {
         const repoUrl = `${githubLink}/archive/refs/tags/${version}.zip`;
         
@@ -93,12 +93,15 @@ function downloadGitHubRepoAsZip(githubLink, version, githubToken, redirectCount
                 const data = [];
                 response.on('data', chunk => data.push(chunk));
                 response.on('end', () => resolve(Buffer.concat(data)));
+            } else if (response.statusCode === 404) {
+                reject(new Error(`GitHub repository or version not found at ${repoUrl}`));
             } else {
                 reject(new Error(`Failed to download file, status code: ${response.statusCode}`));
             }
         }).on('error', (error) => reject(error));
     });
 }
+
 
 // Helper function to retrieve the GitHub token from Secrets Manager
 async function getSecret(secretName) {
