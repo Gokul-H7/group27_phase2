@@ -2,15 +2,34 @@ name: Deploy Specific Lambda Functions
 
 on:
   push:
+    branches: [main]
     paths:
       - "lambda/uploadHandler/**"
       - "lambda/downloadHandler/**"
-    branches: [main]
 
 jobs:
+  filter-changes:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - uses: actions/checkout@v2
+
+      # Step 2: Filter paths
+      - name: Filter changes
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            uploadHandler:
+              - 'lambda/uploadHandler/**'
+            downloadHandler:
+              - 'lambda/downloadHandler/**'
+
   deploy-upload:
     runs-on: ubuntu-latest
-    if: ${{ contains(github.event.head_commit.message, 'lambda/uploadHandler/') }}
+    needs: filter-changes
+    if: ${{ needs.filter-changes.outputs.uploadHandler == 'true' }}
 
     steps:
       # Step 1: Checkout the repository
@@ -42,7 +61,8 @@ jobs:
 
   deploy-download:
     runs-on: ubuntu-latest
-    if: ${{ contains(github.event.head_commit.message, 'lambda/downloadHandler/') }}
+    needs: filter-changes
+    if: ${{ needs.filter-changes.outputs.downloadHandler == 'true' }}
 
     steps:
       # Step 1: Checkout the repository
