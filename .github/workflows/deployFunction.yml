@@ -42,16 +42,16 @@ jobs:
       - name: Deploy downloadHandler
         if: env.downloadHandler == 'true'
         run: |
-          cd lambda/downloadHandler && zip -r ../../downloadHandler.zip .
+          cd lambda/downloadHandler && zip -r ../downloadHandler.zip .
           aws lambda update-function-code \
             --function-name arn:aws:lambda:us-east-2:209479299089:function:downloadHandler \
-            --zip-file fileb://../../downloadHandler.zip
+            --zip-file fileb://downloadHandler.zip
 
       # Step 6: Deploy uploadHandler if it changed
       - name: Deploy uploadHandler
         if: env.uploadHandler == 'true'
         run: |
-          cd lambda/uploadHandler && zip -r ../../uploadHandler.zip .
+          cd lambda/uploadHandler && zip -r ../uploadHandler.zip .
           aws lambda update-function-code \
             --function-name arn:aws:lambda:us-east-2:209479299089:function:uploadHandler \
-            --zip-file fileb://../../uploadHandler.zip
+            --zip-file fileb://uploadHandler.zip
