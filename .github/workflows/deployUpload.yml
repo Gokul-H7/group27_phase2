@@ -21,7 +21,7 @@ jobs:
       # Step 3: Create a zip file containing the Lambda function code
       - name: Create Zip file for Lambda function
         run: |
-          cd lambda/uploadHandler && zip -r ../code.zip .
+          cd lambda/uploadHandler && zip -r ../../code.zip .
 
       # Step 4: Configure AWS credentials using the official AWS action
       - name: Configure AWS credentials
@@ -36,4 +36,4 @@ jobs:
         run: |
           aws lambda update-function-code \
             --function-name arn:aws:lambda:us-east-2:209479299089:function:uploadHandler \
-            --zip-file fileb://code.zip
+            --zip-file fileb://lambda/code.zip
