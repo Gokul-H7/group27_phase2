@@ -1,5 +1,5 @@
 export const handler = async (event) => {
-    // github test
+    // github
     const response = {
       statusCode: 200,
       body: JSON.stringify('Hello from Lambda!'),

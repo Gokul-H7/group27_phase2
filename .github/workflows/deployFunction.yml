@@ -2,34 +2,14 @@ name: Deploy Specific Lambda Functions
 
 on:
   push:
-    branches: [main]
     paths:
-      - "lambda/uploadHandler/**"
       - "lambda/downloadHandler/**"
+      - "lambda/uploadHandler/**"
+    branches: [main]
 
 jobs:
-  filter-changes:
+  deploy:
     runs-on: ubuntu-latest
-
-    steps:
-      # Step 1: Checkout the repository
-      - uses: actions/checkout@v2
-
-      # Step 2: Filter paths
-      - name: Filter changes
-        id: filter
-        uses: dorny/paths-filter@v2
-        with:
-          filters: |
-            uploadHandler:
-              - 'lambda/uploadHandler/**'
-            downloadHandler:
-              - 'lambda/downloadHandler/**'
-
-  deploy-upload:
-    runs-on: ubuntu-latest
-    needs: filter-changes
-    if: ${{ fromJson(needs.filter-changes.outputs.uploadHandler).matched == true }}
 
     steps:
       # Step 1: Checkout the repository
@@ -39,12 +19,18 @@ jobs:
       - name: Install zip tool
         run: sudo apt-get install zip -y
 
-      # Step 3: Create a zip file for uploadHandler Lambda function
-      - name: Create Zip file for uploadHandler
+      # Step 3: Determine which Lambda directory was changed
+      - name: Identify changed directories
+        id: changes
         run: |
-          cd lambda/uploadHandler && zip -r ../../uploadHandler.zip .
+          if git diff --name-only HEAD~1 HEAD | grep -q "^lambda/downloadHandler/"; then
+            echo "downloadHandler=true" >> $GITHUB_ENV
+          fi
+          if git diff --name-only HEAD~1 HEAD | grep -q "^lambda/uploadHandler/"; then
+            echo "uploadHandler=true" >> $GITHUB_ENV
+          fi
 
-      # Step 4: Configure AWS credentials
+      # Step 4: Configure AWS credentials using the official AWS action
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -52,42 +38,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
-      # Step 5: Deploy the uploadHandler Lambda function
-      - name: Deploy uploadHandler Lambda function
-        run: |
-          aws lambda update-function-code \
-            --function-name arn:aws:lambda:us-east-2:209479299089:function:uploadHandler \
-            --zip-file fileb://uploadHandler.zip
-
-  deploy-download:
-    runs-on: ubuntu-latest
-    needs: filter-changes
-    if: ${{ fromJson(needs.filter-changes.outputs.downloadHandler).matched == true }}
-
-    steps:
-      # Step 1: Checkout the repository
-      - uses: actions/checkout@v2
-
-      # Step 2: Install zip utility
-      - name: Install zip tool
-        run: sudo apt-get install zip -y
-
-      # Step 3: Create a zip file for downloadHandler Lambda function
-      - name: Create Zip file for downloadHandler
+      # Step 5: Deploy downloadHandler if it changed
+      - name: Deploy downloadHandler
+        if: env.downloadHandler == 'true'
         run: |
           cd lambda/downloadHandler && zip -r ../../downloadHandler.zip .
-
-      # Step 4: Configure AWS credentials
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-2
-
-      # Step 5: Deploy the downloadHandler Lambda function
-      - name: Deploy downloadHandler Lambda function
-        run: |
           aws lambda update-function-code \
             --function-name arn:aws:lambda:us-east-2:209479299089:function:downloadHandler \
-            --zip-file fileb://downloadHandler.zip
+            --zip-file fileb://../../downloadHandler.zip
+
+      # Step 6: Deploy uploadHandler if it changed
+      - name: Deploy uploadHandler
+        if: env.uploadHandler == 'true'
+        run: |
+          cd lambda/uploadHandler && zip -r ../../uploadHandler.zip .
+          aws lambda update-function-code \
+            --function-name arn:aws:lambda:us-east-2:209479299089:function:uploadHandler \
+            --zip-file fileb://../../uploadHandler.zip
