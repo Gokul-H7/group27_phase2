@@ -9,8 +9,8 @@ on:
 
 jobs:
   deploy-upload:
-    if: ${{ github.event.paths.* contains 'lambda/uploadHandler/' }}
     runs-on: ubuntu-latest
+    if: ${{ contains(github.event.head_commit.message, 'lambda/uploadHandler/') }}
 
     steps:
       # Step 1: Checkout the repository
@@ -41,8 +41,8 @@ jobs:
             --zip-file fileb://uploadHandler.zip
 
   deploy-download:
-    if: ${{ github.event.paths.* contains 'lambda/downloadHandler/' }}
     runs-on: ubuntu-latest
+    if: ${{ contains(github.event.head_commit.message, 'lambda/downloadHandler/') }}
 
     steps:
       # Step 1: Checkout the repository
