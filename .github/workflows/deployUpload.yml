@@ -21,9 +21,18 @@ jobs:
       # Step 3: Create a zip file containing the Lambda function code
       - name: Create Zip file for Lambda function
         run: |
-          cd lambda/uploadHandler && zip -r ../../code.zip .
+          cd lambda/uploadHandler
+          zip -r ../../code.zip .
 
-      # Step 4: Configure AWS credentials using the official AWS action
+      # Step 4: Debugging: Check current directory and zip file
+      - name: Verify zip file
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -l
+          ls lambda
+          ls code.zip
+
+      # Step 5: Configure AWS credentials using the official AWS action
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -31,9 +40,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
-      # Step 5: Update Lambda function with the newly zipped code
+      # Step 6: Update Lambda function with the newly zipped code
       - name: Deploy Lambda function
         run: |
           aws lambda update-function-code \
             --function-name arn:aws:lambda:us-east-2:209479299089:function:uploadHandler \
-            --zip-file fileb://lambda/code.zip
+            --zip-file fileb://code.zip
