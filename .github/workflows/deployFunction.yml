@@ -1,0 +1,73 @@
+name: Deploy Specific Lambda Functions
+
+on:
+  push:
+    paths:
+      - "lambda/uploadHandler/**"
+      - "lambda/downloadHandler/**"
+    branches: [main]
+
+jobs:
+  deploy-upload:
+    if: ${{ github.event.paths.* contains 'lambda/uploadHandler/' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - uses: actions/checkout@v2
+
+      # Step 2: Install zip utility
+      - name: Install zip tool
+        run: sudo apt-get install zip -y
+
+      # Step 3: Create a zip file for uploadHandler Lambda function
+      - name: Create Zip file for uploadHandler
+        run: |
+          cd lambda/uploadHandler && zip -r ../../uploadHandler.zip .
+
+      # Step 4: Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      # Step 5: Deploy the uploadHandler Lambda function
+      - name: Deploy uploadHandler Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name arn:aws:lambda:us-east-2:209479299089:function:uploadHandler \
+            --zip-file fileb://uploadHandler.zip
+
+  deploy-download:
+    if: ${{ github.event.paths.* contains 'lambda/downloadHandler/' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - uses: actions/checkout@v2
+
+      # Step 2: Install zip utility
+      - name: Install zip tool
+        run: sudo apt-get install zip -y
+
+      # Step 3: Create a zip file for downloadHandler Lambda function
+      - name: Create Zip file for downloadHandler
+        run: |
+          cd lambda/downloadHandler && zip -r ../../downloadHandler.zip .
+
+      # Step 4: Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      # Step 5: Deploy the downloadHandler Lambda function
+      - name: Deploy downloadHandler Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name arn:aws:lambda:us-east-2:209479299089:function:downloadHandler \
+            --zip-file fileb://downloadHandler.zip
