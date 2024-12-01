@@ -18,9 +18,11 @@ exports.handler = async (event) => {
     const tableName = "Packages";
     let results = [];
     let seenPackages = new Set(); // To track unique packages
+    let lastEvaluatedKey = null; // For pagination
+    let paginationOffset = null;
 
     for (const query of queries) {
-      const { Name, Version } = query;
+      const { Name, Version, Offset } = query;
 
       if (!Name) {
         return {
@@ -29,24 +31,40 @@ exports.handler = async (event) => {
         };
       }
 
-      let filterExpression = "Name = :name";
-      let expressionAttributeValues = { ":name": Name };
+      let params = { TableName: tableName };
 
-      if (Version) {
+      if (Name === "*" && !Version) {
+        // Fetch all records from the table with pagination
+        params = {
+          TableName: tableName,
+          ExclusiveStartKey: Offset || null, // Use offset if provided
+        };
+      } else if (Name !== "*" && !Version) {
+        // Filter by Name only
+        params = {
+          TableName: tableName,
+          FilterExpression: "Name = :name",
+          ExpressionAttributeValues: { ":name": Name },
+          ExclusiveStartKey: Offset || null,
+        };
+      } else if (Name !== "*" && Version) {
+        // Filter by Name and Version
         const versionRange = getVersionRange(Version);
-        filterExpression += " AND Version BETWEEN :minVersion AND :maxVersion";
-        expressionAttributeValues[":minVersion"] = versionRange.min;
-        expressionAttributeValues[":maxVersion"] = versionRange.max;
+        params = {
+          TableName: tableName,
+          FilterExpression: "Name = :name AND Version BETWEEN :minVersion AND :maxVersion",
+          ExpressionAttributeValues: {
+            ":name": Name,
+            ":minVersion": versionRange.min,
+            ":maxVersion": versionRange.max,
+          },
+          ExclusiveStartKey: Offset || null,
+        };
       }
 
       // Query DynamoDB
-      const params = {
-        TableName: tableName,
-        FilterExpression: filterExpression,
-        ExpressionAttributeValues: expressionAttributeValues,
-      };
-
       const response = await dynamoDB.scan(params).promise();
+      paginationOffset = response.LastEvaluatedKey; // Save for next page
 
       // Collect unique packages
       for (const item of response.Items) {
@@ -62,9 +80,13 @@ exports.handler = async (event) => {
       }
     }
 
-    // Return the aggregated unique results
+    // Return the aggregated unique results with pagination header
     return {
       statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Next-Offset": paginationOffset ? JSON.stringify(paginationOffset) : null,
+      },
       body: JSON.stringify(results),
     };
   } catch (error) {
