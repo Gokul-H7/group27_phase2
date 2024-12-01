@@ -139,11 +139,32 @@ async function updateDynamoDB(metadata) {
 }
 
 // Retrieve secret from AWS Secrets Manager
+// Retrieve secret from AWS Secrets Manager
 async function getSecret(secretName) {
-  const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
-  if (data && data.SecretString) {
+  try {
+    console.log(`Fetching secret: ${secretName}`);
+    const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+
+    // Log the raw response from Secrets Manager
+    console.log("Raw secret response:", JSON.stringify(data));
+
+    // Check if SecretString is defined
+    if (!data || !data.SecretString) {
+      throw new Error(`SecretString for ${secretName} is undefined or missing.`);
+    }
+
+    // Parse the secret
     const secret = JSON.parse(data.SecretString);
+    console.log("Parsed secret object:", secret);
+
+    // Ensure the required token field exists
+    if (!secret.token && !secret.GITHUB_TOKEN_2) {
+      throw new Error(`Secret ${secretName} does not contain the expected key 'token' or 'GITHUB_TOKEN_2'.`);
+    }
+
     return secret.token || secret.GITHUB_TOKEN_2;
+  } catch (error) {
+    console.error(`Error retrieving secret ${secretName}:`, error.message);
+    throw new Error(`Failed to retrieve secret: ${error.message}`);
   }
-  throw new Error(`Secret ${secretName} not found or invalid`);
 }
