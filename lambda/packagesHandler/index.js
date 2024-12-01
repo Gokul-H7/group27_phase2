@@ -48,16 +48,19 @@ exports.handler = async (event) => {
         }
 
         let results = [];
+        let seenPackageIDs = new Set(); // Track processed PackageIDs to avoid duplicates
+
         for (const query of queries) {
             if (!query.Name) {
                 throw new Error("Each query must have a 'Name' field.");
             }
 
+            let queryResults = [];
             if (query.Name === "*") {
                 // Wildcard query: retrieve all packages
                 const params = { TableName: "Packages" };
                 const data = await dynamoDB.scan(params).promise();
-                results = results.concat(data.Items || []);
+                queryResults = data.Items || [];
             } else {
                 const { Name, Version } = query;
 
@@ -71,7 +74,7 @@ exports.handler = async (event) => {
                         ExpressionAttributeValues: { ":name": Name },
                     };
                     const data = await dynamoDB.query(params).promise();
-                    results = results.concat(data.Items || []);
+                    queryResults = data.Items || [];
                 } else {
                     // Handle version ranges
                     const { start, end } = parseVersionRange(Version);
@@ -90,21 +93,28 @@ exports.handler = async (event) => {
                         },
                     };
                     const data = await dynamoDB.scan(params).promise(); // Use scan for version range queries
-                    results = results.concat(data.Items || []);
+                    queryResults = data.Items || [];
                 }
             }
-        }
 
-        const formattedResults = results.map((item) => ({
-            Version: item.Version,
-            Name: item.Name,
-            ID: item.ID,
-        }));
+            // Filter duplicates and maintain query order
+            queryResults.forEach((item) => {
+                if (!seenPackageIDs.has(item.PackageID)) {
+                    seenPackageIDs.add(item.PackageID);
+                    results.push({
+                        Version: item.Version,
+                        Name: item.Name,
+                        ID: item.ID,
+                        PackageID: item.PackageID,
+                    });
+                }
+            });
+        }
 
         return {
             statusCode: 200,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(formattedResults || []),
+            body: JSON.stringify(results),
         };
     } catch (error) {
         console.error("Error processing request:", error);
