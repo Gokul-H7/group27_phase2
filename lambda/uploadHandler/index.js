@@ -5,73 +5,85 @@ const secretsManager = new AWS.SecretsManager();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
 exports.handler = async (event) => {
-    const { Name, Version, URL, Content, JSProgram, debloat = false } = event;
+  const { Name, Version, URL, Content, JSProgram, debloat = false } = event;
 
-    // Validate mandatory inputs
-    if (!Name || !Version || !JSProgram) {
-        return {
-            statusCode: 400,
-            body: JSON.stringify({ error: "Missing required fields: Name, Version, or JSProgram" })
-        };
-    }
+  // Validate mandatory inputs
+  if (!Name || !Version || !JSProgram) {
+      return {
+          statusCode: 400,
+          body: JSON.stringify({ error: "Missing required fields: Name, Version, or JSProgram" })
+      };
+  }
 
-    if (URL && Content) {
-        return {
-            statusCode: 400,
-            body: JSON.stringify({ error: "Both URL and Content cannot be provided at the same time. Provide only one." })
-        };
-    }
+  if (URL && Content) {
+      return {
+          statusCode: 400,
+          body: JSON.stringify({ error: "Both URL and Content cannot be provided at the same time. Provide only one." })
+      };
+  }
 
-    if (!URL && !Content) {
-        return {
-            statusCode: 400,
-            body: JSON.stringify({ error: "Either URL or Content must be provided" })
-        };
-    }
+  if (!URL && !Content) {
+      return {
+          statusCode: 400,
+          body: JSON.stringify({ error: "Either URL or Content must be provided" })
+      };
+  }
 
-    const PackageID = `${Name}-${Version}`;
-    const s3BucketName = 'packages-registry-27';
-    const s3Key = `${Name}/${Version}/${PackageID}.zip`;
+  const PackageID = `${Name}-${Version}`;
+  const s3BucketName = 'packages-registry-27';
+  const s3Key = `${Name}/${Version}/${PackageID}.zip`;
 
-    let metadata = {
-        Name,
-        Version,
-        ID: PackageID.toLowerCase()
-    };
+  let metadata = {
+      Name,
+      Version,
+      ID: PackageID.toLowerCase()
+  };
 
-    try {
-        if (URL) {
-            const githubToken = await getSecret('GITHUB_TOKEN_2');
-            const { base64Content, s3Response } = await processURLToS3(URL, githubToken, s3BucketName, s3Key);
-            await updateDynamoDB(PackageID, Version, metadata, s3Key);
-            return {
-                statusCode: 200,
-                body: JSON.stringify({
-                    metadata,
-                    data: { URL, Content: base64Content, JSProgram }
-                })
-            };
-        } else if (Content) {
-            const contentBuffer = Buffer.from(Content, 'base64');
-            await uploadContentToS3(contentBuffer, s3BucketName, s3Key);
-            await updateDynamoDB(PackageID, Version, metadata, s3Key);
-            return {
-                statusCode: 200,
-                body: JSON.stringify({
-                    metadata,
-                    data: { Content, JSProgram }
-                })
-            };
-        }
-    } catch (error) {
-        return {
-            statusCode: 500,
-            body: JSON.stringify({
-                error: "Failed to process package",
-                details: error.message
-            })
-        };
-    }
+  try {
+      // Check if the package already exists in DynamoDB
+      const exists = await checkPackageExists(PackageID, Version);
+      if (exists) {
+          return {
+              statusCode: 409,
+              body: JSON.stringify({
+                  error: "Package exists already."
+              })
+          };
+      }
+
+      // Proceed with processing URL or Content
+      if (URL) {
+          const githubToken = await getSecret('GITHUB_TOKEN_2');
+          const { base64Content, s3Response } = await processURLToS3(URL, githubToken, s3BucketName, s3Key);
+          await updateDynamoDB(PackageID, Version, metadata, s3Key);
+          return {
+              statusCode: 200,
+              body: JSON.stringify({
+                  metadata,
+                  data: { URL, Content: base64Content, JSProgram }
+              })
+          };
+      } else if (Content) {
+          const contentBuffer = Buffer.from(Content, 'base64');
+          await uploadContentToS3(contentBuffer, s3BucketName, s3Key);
+          await updateDynamoDB(PackageID, Version, metadata, s3Key);
+          return {
+              statusCode: 200,
+              body: JSON.stringify({
+                  metadata,
+                  data: { Content, JSProgram }
+              })
+          };
+      }
+  } catch (error) {
+      return {
+          statusCode: 500,
+          body: JSON.stringify({
+              error: "Failed to process package",
+              details: error.message
+          })
+      };
+  }
 };
 
 // Helper function to process URL, download the content, and upload it to S3
@@ -158,4 +170,18 @@ async function updateDynamoDB(PackageID, Version, metadata, s3Key) {
     };
 
     return dynamoDB.put(params).promise();
+}
+
+// Helper function to check if a package already exists
+async function checkPackageExists(PackageID, Version) {
+  const params = {
+      TableName: 'Packages',
+      Key: {
+          PackageID,
+          Version
+      }
+  };
+
+  const result = await dynamoDB.get(params).promise();
+  return !!result.Item; // Returns true if the item exists, false otherwise
 }
