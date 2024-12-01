@@ -2,8 +2,8 @@ const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
-const BUCKET_NAME = 'your-bucket-name'; // Replace with your S3 bucket name
-const TABLE_NAME = 'PackagesTable'; // Replace with your DynamoDB table name
+const BUCKET_NAME = 'packages-registry-27';
+const TABLE_NAME = 'PackagesTable';
 
 exports.handler = async (event) => {
     console.log('Received event:', JSON.stringify(event));
@@ -21,17 +21,25 @@ exports.handler = async (event) => {
         return generateResponse(400, 'Invalid JSON in request body.');
     }
 
-    const { Content, JSProgram, URL, debloat } = requestBody;
+    const { Name, Version, Content, JSProgram, URL, debloat } = requestBody;
 
     // Step 2: Validate required fields
-    if ((!Content && !JSProgram && !URL) || (Content && URL)) {
+    if (!Name || !Version) {
+        return generateResponse(400, 'Invalid request. "Name" and "Version" are required.');
+    }
+    if ((!Content && !URL) || (Content && URL)) {
         return generateResponse(400, 'Invalid request. Provide either "Content" or "URL", but not both.');
     }
 
-    // Step 3: Generate a unique package ID
-    const packageId = generatePackageId(requestBody);
+    // Step 3: Generate a package ID (Name + Version)
+    const packageId = `${Name}-${Version}`;
+    const packageMetadata = {
+        Name,
+        Version,
+        ID: packageId,
+    };
 
-    // Step 4: Upload content to S3 (if applicable)
+    // Step 4: Handle content upload (if applicable)
     if (Content) {
         try {
             await s3
@@ -41,18 +49,18 @@ exports.handler = async (event) => {
                     Body: Buffer.from(Content, 'base64'),
                 })
                 .promise();
-            console.log('Package content uploaded to S3.');
+            console.log('Content uploaded to S3.');
         } catch (error) {
             console.error('Error uploading to S3:', error);
-            return generateResponse(500, 'Failed to upload package content.');
+            return generateResponse(500, 'Failed to upload content.');
         }
     }
 
     // Step 5: Store metadata in DynamoDB
     const metadata = {
         PackageID: packageId,
-        Name: 'Example Package', // Replace with actual logic
-        Version: '1.0.0', // Replace with actual logic
+        Name,
+        Version,
         Timestamp: new Date().toISOString(),
         ContentStoredInS3: !!Content,
         URL,
@@ -75,27 +83,22 @@ exports.handler = async (event) => {
 
     // Step 6: Create the response payload
     const responsePayload = {
-        metadata: {
-            Name: metadata.Name,
-            Version: metadata.Version,
-            ID: metadata.PackageID,
-        },
+        metadata: packageMetadata,
         data: {
             Content: Content ? '[Stored in S3]' : null,
-            URL,
+            URL: URL || null,
             JSProgram,
         },
     };
 
+    // Remove the `URL` field from the response if the input was `Content`
+    if (Content) {
+        delete responsePayload.data.URL;
+    }
+
     console.log('Returning success response:', responsePayload);
     return generateResponse(201, responsePayload);
 };
-
-// Generate a unique package ID based on input (mock logic)
-function generatePackageId(requestBody) {
-    const timestamp = Date.now();
-    return `pkg-${timestamp}`;
-}
 
 // Utility function to generate a consistent HTTP response
 function generateResponse(statusCode, body) {
