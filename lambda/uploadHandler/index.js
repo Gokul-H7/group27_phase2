@@ -10,8 +10,16 @@ const BUCKET_NAME = "package-registry-27";
 const TABLE_NAME = "Packages";
 
 async function getGitHubToken() {
-  const secret = await secretsManager.getSecretValue({ SecretId: "GITHUB_TOKEN_2" }).promise();
-  return JSON.parse(secret.SecretString).token;
+  try {
+    const secret = await secretsManager.getSecretValue({ SecretId: "GITHUB_TOKEN_2" }).promise();
+    console.log("Secret fetched:", secret);
+
+    const secretObject = JSON.parse(secret.SecretString);
+    return secretObject.token;
+  } catch (error) {
+    console.error("Error fetching GitHub token:", error.message);
+    throw new Error("Failed to retrieve GitHub token.");
+  }
 }
 
 async function fetchContent(url, token = null) {
