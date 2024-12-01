@@ -61,7 +61,7 @@ exports.handler = async (event) => {
       }
       const githubToken = await getSecret('GITHUB_TOKEN_2');
       const { base64Content, s3Response } = await processURLToS3(URL, githubToken, s3BucketName, s3Key);
-      await updateDynamoDB(PackageID, Version, metadata, s3Key);
+      await updateDynamoDB(PackageID, Version, metadata, s3Key, URL); // Include URL
       return {
         statusCode: 200,
         body: JSON.stringify({
@@ -72,7 +72,7 @@ exports.handler = async (event) => {
     } else if (Content) {
       const contentBuffer = Buffer.from(Content, 'base64');
       await uploadContentToS3(contentBuffer, s3BucketName, s3Key);
-      await updateDynamoDB(PackageID, Version, metadata, s3Key);
+      await updateDynamoDB(PackageID, Version, metadata, s3Key); // No URL provided
       return {
         statusCode: 200,
         body: JSON.stringify({
@@ -169,7 +169,11 @@ async function getSecret(secretName) {
 }
 
 // Helper function to update DynamoDB
-async function updateDynamoDB(PackageID, Version, metadata, s3Key) {
+async function updateDynamoDB(PackageID, Version, metadata, s3Key, URL = null) {
+  if (URL) {
+    metadata.URL = URL; // Add URL to metadata if provided
+  }
+
   const params = {
     TableName: 'Packages',
     Item: {
@@ -177,8 +181,8 @@ async function updateDynamoDB(PackageID, Version, metadata, s3Key) {
       Version,
       Name: metadata.Name,
       Metadata: metadata,
-      S3Key: s3Key
-    }
+      S3Key: s3Key,
+    },
   };
 
   return dynamoDB.put(params).promise();
@@ -230,4 +234,3 @@ async function fetchGithubLinkFromNpm(npmLink) {
     }).on('error', (error) => reject(new Error(`Request failed: ${error.message}`)));
   });
 }
-

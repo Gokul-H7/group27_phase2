@@ -1,0 +1,48 @@
+name: Deploy Reset Function
+
+on:
+  push:
+    paths:
+      - "lambda/resetHandler/**"
+    branches: [main]
+    
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - uses: actions/checkout@v2
+
+      # Step 2: Install zip utility
+      - name: Install zip tool
+        run: sudo apt-get install zip -y
+
+      # Step 3: Create a zip file containing the Lambda function code
+      - name: Create Zip file for Lambda function
+        run: |
+          cd lambda/resetHandler
+          zip -r ../../code.zip .
+
+      # # Step 4: Debugging: Check current directory and zip file
+      # - name: Verify zip file
+      #   run: |
+      #     echo "Current directory: $(pwd)"
+      #     ls -l
+      #     ls lambda
+      #     ls code.zip
+
+      # Step 4: Configure AWS credentials using the official AWS action
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      # Step 5: Update Lambda function with the newly zipped code
+      - name: Deploy Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name arn:aws:lambda:us-east-2:209479299089:function:resetHandler \
+            --zip-file fileb://code.zip
