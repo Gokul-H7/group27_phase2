@@ -1,171 +1,113 @@
 const AWS = require("aws-sdk");
+const https = require("https");
+const { v4: uuidv4 } = require("uuid");
+
 const s3 = new AWS.S3();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const axios = require("axios");
 const secretsManager = new AWS.SecretsManager();
 
-const bucketName = "package-registry-27";
-const tableName = "Packages";
+const BUCKET_NAME = "package-registry-27";
+const TABLE_NAME = "Packages";
+
+async function getGitHubToken() {
+  const secret = await secretsManager.getSecretValue({ SecretId: "GITHUB_TOKEN_2" }).promise();
+  return JSON.parse(secret.SecretString).token;
+}
+
+async function fetchContent(url, token = null) {
+  return new Promise((resolve, reject) => {
+    const options = token
+      ? { headers: { Authorization: `Bearer ${token}`, "User-Agent": "AWS-Lambda" } }
+      : {};
+    https.get(url, options, (res) => {
+      let data = [];
+      res.on("data", (chunk) => data.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(data)));
+    }).on("error", (err) => reject(err));
+  });
+}
+
+async function uploadToS3(key, body) {
+  const params = { Bucket: BUCKET_NAME, Key: key, Body: body };
+  return s3.upload(params).promise();
+}
+
+async function updateDynamoDB(metadata) {
+  const params = {
+    TableName: TABLE_NAME,
+    Item: metadata,
+  };
+  return dynamoDB.put(params).promise();
+}
 
 exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
-    const { JSProgram, URL, Name = "Unknown", Version = "1.0.0" } = body;
+    const { Content, JSProgram, URL, Name, Version } = body;
 
-    if (!URL) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-          error: "A 'URL' must be provided for this operation.",
-        }),
-      };
+    // Validate required fields
+    if (!Name || !Version) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Name and Version are required." }) };
     }
 
-    // Determine the type of URL (GitHub or npm)
-    const isGitHub = URL.includes("github.com");
-    const isNpm = URL.includes("npmjs.com");
-
-    if (!isGitHub && !isNpm) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-          error: "Unsupported URL. Only GitHub and npm links are supported.",
-        }),
-      };
+    if ((Content && URL) || (!Content && !URL)) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Provide either Content or URL, but not both." }) };
     }
 
-    // Fetch package details based on the URL type
-    let packageDetails;
-    if (isGitHub) {
-      // Get the GitHub token from AWS Secrets Manager
-      const githubToken = await getSecret("GITHUB_TOKEN_2");
-      packageDetails = await fetchGitHubPackageDetails(URL, githubToken);
-    } else if (isNpm) {
-      packageDetails = await fetchNpmPackageDetails(URL);
+    const packageID = `${Name}_${Version}`; // Generate PackageID as "name_version"
+    let contentBuffer;
+
+    // Fetch content from URL or use provided Content
+    if (Content) {
+      contentBuffer = Buffer.from(Content, "base64");
+    } else if (URL) {
+      const token = URL.includes("github.com") ? await getGitHubToken() : null;
+      let contentUrl;
+
+      if (URL.includes("github.com")) {
+        contentUrl = `${URL}/archive/refs/heads/main.zip`;
+      } else if (URL.includes("npmjs.com")) {
+        contentUrl = `https://registry.npmjs.org/${URL.split("/").pop()}/latest`;
+      } else {
+        return { statusCode: 400, body: JSON.stringify({ error: "Unsupported URL format." }) };
+      }
+
+      contentBuffer = await fetchContent(contentUrl, token);
     }
 
-    if (!packageDetails) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({
-          error: "Failed to retrieve package details from the provided URL.",
-        }),
-      };
-    }
+    // Upload to S3
+    const s3Key = `${packageID}.zip`;
+    await uploadToS3(s3Key, contentBuffer);
 
-    // Generate a unique PackageID and S3 key
-    const packageId = packageDetails.id || require("crypto").randomUUID();
-    const s3Key = `packages/${packageId}/${Version}/file.zip`;
-
-    // Upload details to S3
-    const packageContent = Buffer.from(JSON.stringify(packageDetails), "utf-8");
-    await s3
-      .putObject({
-        Bucket: bucketName,
-        Key: s3Key,
-        Body: packageContent,
-      })
-      .promise();
-
-    // Save metadata to DynamoDB
+    // Metadata for DynamoDB
     const metadata = {
-      PackageID: packageId,
+      PackageID: packageID,
       Version,
-      Name: packageDetails.name || Name,
-      JSProgram,
+      Name,
+      Metadata: { JSProgram },
       S3Key: s3Key,
-      SourceURL: URL,
     };
 
-    await dynamoDB
-      .put({
-        TableName: tableName,
-        Item: metadata,
-      })
-      .promise();
+    // Update DynamoDB
+    await updateDynamoDB(metadata);
 
-    // Success response
-    return {
-      statusCode: 201,
-      body: JSON.stringify({
-        metadata: {
-          Name: metadata.Name,
-          Version,
-          ID: packageId,
-        },
-        data: {
-          S3Key: s3Key,
-          JSProgram,
-          SourceURL: URL,
-        },
-      }),
+    // Response
+    const response = {
+      metadata: {
+        Name,
+        Version,
+        ID: packageID,
+      },
+      data: {
+        Content: contentBuffer.toString("base64"),
+        JSProgram,
+        URL,
+      },
     };
-  } catch (error) {
-    console.error("Error processing the request:", error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "Internal Server Error", details: error.message }),
-    };
+
+    return { statusCode: 201, body: JSON.stringify(response) };
+  } catch (err) {
+    console.error("Error:", err);
+    return { statusCode: 500, body: JSON.stringify({ error: "Internal Server Error", details: err.message }) };
   }
 };
-
-// Helper to fetch the GitHub token from Secrets Manager
-async function getSecret(secretName) {
-  const response = await secretsManager
-    .getSecretValue({ SecretId: secretName })
-    .promise();
-  return JSON.parse(response.SecretString).GITHUB_TOKEN_2;
-}
-
-// Helper to fetch package details from GitHub
-async function fetchGitHubPackageDetails(githubUrl, token) {
-  try {
-    // Extract owner and repo from GitHub URL
-    const [, owner, repo] = githubUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-
-    // GitHub API request
-    const response = await axios.get(
-      `https://api.github.com/repos/${owner}/${repo}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      }
-    );
-
-    return {
-      id: response.data.id,
-      name: response.data.name,
-      description: response.data.description,
-      stars: response.data.stargazers_count,
-      forks: response.data.forks_count,
-      watchers: response.data.watchers_count,
-    };
-  } catch (error) {
-    console.error("Failed to fetch GitHub package details:", error);
-    return null;
-  }
-}
-
-// Helper to fetch package details from npm
-async function fetchNpmPackageDetails(npmUrl) {
-  try {
-    // Extract package name from npm URL
-    const [, packageName] = npmUrl.match(/npmjs\.com\/package\/([^\/]+)/);
-
-    // NPM registry API request
-    const response = await axios.get(`https://registry.npmjs.org/${packageName}`);
-
-    return {
-      id: response.data._id,
-      name: response.data.name,
-      description: response.data.description,
-      version: response.data["dist-tags"].latest,
-      license: response.data.license,
-    };
-  } catch (error) {
-    console.error("Failed to fetch NPM package details:", error);
-    return null;
-  }
-}
