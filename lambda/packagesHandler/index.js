@@ -48,39 +48,26 @@ exports.handler = async (event) => {
 
         let results = [];
         for (const query of queries) {
-            if (!query.Name) throw new Error("Each query must have a 'Name' field.");
-
-            if (query.Name === "*") {
-                const params = {
-                    TableName: "Packages",
-                };
-                const data = await dynamoDB.scan(params).promise();
-                results = results.concat(data.Items || []);
-            } else {
-                const { Name, Version } = query;
-
-                let params = {
-                    TableName: "Packages",
-                    KeyConditionExpression: "#name = :name",
-                    ExpressionAttributeNames: {
-                        "#name": "Name", // Alias the reserved keyword
-                    },
-                    ExpressionAttributeValues: {
-                        ":name": Name,
-                    },
-                };
-
-                if (Version) {
-                    const { start, end } = parseVersionRange(Version);
-                    params.FilterExpression = "#version BETWEEN :start AND :end";
-                    params.ExpressionAttributeNames["#version"] = "Version";
-                    params.ExpressionAttributeValues[":start"] = start;
-                    params.ExpressionAttributeValues[":end"] = end;
-                }
-
-                const data = await dynamoDB.query(params).promise();
-                results = results.concat(data.Items || []);
+            if (!query.Name || !query.Version) {
+                throw new Error("Each query must have 'Name' and 'Version' fields.");
             }
+
+            // Build PackageID
+            const PackageID = `${query.Name}-${query.Version}`;
+
+            const params = {
+                TableName: "Packages",
+                KeyConditionExpression: "#packageID = :packageID",
+                ExpressionAttributeNames: {
+                    "#packageID": "PackageID", // Alias for the key
+                },
+                ExpressionAttributeValues: {
+                    ":packageID": PackageID,
+                },
+            };
+
+            const data = await dynamoDB.query(params).promise();
+            results = results.concat(data.Items || []);
         }
 
         const formattedResults = results.map((item) => ({
