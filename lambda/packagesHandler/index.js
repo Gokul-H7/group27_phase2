@@ -1,9 +1,12 @@
 const AWS = require("aws-sdk");
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
+// Helper function to parse version ranges
 const parseVersionRange = (version) => {
-    if (typeof version !== "string") throw new Error("Version must be a string.");
-
+    if (version.includes("-")) {
+        const [start, end] = version.split("-");
+        return { start, end };
+    }
     if (version.startsWith("~")) {
         const [major, minor, patch] = version.slice(1).split(".").map(Number);
         if (patch !== undefined) {
@@ -13,7 +16,8 @@ const parseVersionRange = (version) => {
         } else {
             return { start: `${major}.0.0`, end: `${major + 1}.0.0` };
         }
-    } else if (version.startsWith("^")) {
+    }
+    if (version.startsWith("^")) {
         const [major, minor, patch] = version.slice(1).split(".").map(Number);
         if (major > 0) {
             return { start: `${major}.${minor || 0}.${patch || 0}`, end: `${major + 1}.0.0` };
@@ -22,9 +26,8 @@ const parseVersionRange = (version) => {
         } else {
             return { start: `${major}.${minor}.${patch}`, end: `${major}.${minor}.${patch + 1}` };
         }
-    } else {
-        return { start: version, end: version };
     }
+    return { start: version, end: version };
 };
 
 exports.handler = async (event) => {
@@ -34,10 +37,8 @@ exports.handler = async (event) => {
         // Parse input, handling both API Gateway and direct Lambda invocation formats
         let queries;
         if (event.body) {
-            // API Gateway: Parse body as JSON
             queries = JSON.parse(event.body);
         } else {
-            // Direct Lambda invocation: Use event directly
             queries = event;
         }
 
@@ -48,26 +49,50 @@ exports.handler = async (event) => {
 
         let results = [];
         for (const query of queries) {
-            if (!query.Name || !query.Version) {
-                throw new Error("Each query must have 'Name' and 'Version' fields.");
+            if (!query.Name) {
+                throw new Error("Each query must have a 'Name' field.");
             }
 
-            // Build PackageID
-            const PackageID = `${query.Name}-${query.Version}`;
+            if (query.Name === "*") {
+                // Wildcard query: retrieve all packages
+                const params = { TableName: "Packages" };
+                const data = await dynamoDB.scan(params).promise();
+                results = results.concat(data.Items || []);
+            } else {
+                const { Name, Version } = query;
 
-            const params = {
-                TableName: "Packages",
-                KeyConditionExpression: "#packageID = :packageID",
-                ExpressionAttributeNames: {
-                    "#packageID": "PackageID", // Alias for the key
-                },
-                ExpressionAttributeValues: {
-                    ":packageID": PackageID,
-                },
-            };
+                if (!Version) {
+                    // Query by Name only
+                    const params = {
+                        TableName: "Packages",
+                        IndexName: "NameIndex", // Assume a secondary index on Name
+                        KeyConditionExpression: "#name = :name",
+                        ExpressionAttributeNames: { "#name": "Name" },
+                        ExpressionAttributeValues: { ":name": Name },
+                    };
+                    const data = await dynamoDB.query(params).promise();
+                    results = results.concat(data.Items || []);
+                } else {
+                    // Handle version ranges
+                    const { start, end } = parseVersionRange(Version);
 
-            const data = await dynamoDB.query(params).promise();
-            results = results.concat(data.Items || []);
+                    const params = {
+                        TableName: "Packages",
+                        FilterExpression: "#name = :name AND #version BETWEEN :start AND :end",
+                        ExpressionAttributeNames: {
+                            "#name": "Name",
+                            "#version": "Version",
+                        },
+                        ExpressionAttributeValues: {
+                            ":name": Name,
+                            ":start": start,
+                            ":end": end,
+                        },
+                    };
+                    const data = await dynamoDB.scan(params).promise(); // Use scan for version range queries
+                    results = results.concat(data.Items || []);
+                }
+            }
         }
 
         const formattedResults = results.map((item) => ({
@@ -78,9 +103,7 @@ exports.handler = async (event) => {
 
         return {
             statusCode: 200,
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(formattedResults || []),
         };
     } catch (error) {
@@ -88,9 +111,7 @@ exports.handler = async (event) => {
 
         return {
             statusCode: 500,
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ error: error.message || "An unknown error occurred." }),
         };
     }
