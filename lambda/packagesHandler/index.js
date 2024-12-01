@@ -28,15 +28,20 @@ const parseVersionRange = (version) => {
 };
 
 exports.handler = async (event) => {
-    console.log("Event received:", JSON.stringify(event, null, 2));
     try {
-        if (!event.body) {
-            throw new Error("Request body is empty or undefined.");
+        console.log("Event received:", JSON.stringify(event, null, 2));
+
+        // Parse input, handling both API Gateway and direct Lambda invocation formats
+        let queries;
+        if (event.body) {
+            // API Gateway: Parse body as JSON
+            queries = JSON.parse(event.body);
+        } else {
+            // Direct Lambda invocation: Use event directly
+            queries = event;
         }
 
-        let queries = JSON.parse(event.body);
-
-        // Handle single query case by wrapping it into an array
+        // Wrap single query in array if necessary
         if (!Array.isArray(queries)) {
             queries = [queries];
         }
