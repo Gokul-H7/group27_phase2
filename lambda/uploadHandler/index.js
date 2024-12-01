@@ -3,16 +3,25 @@ const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 
 const BUCKET_NAME = 'packages-registry-27';
-const TABLE_NAME = 'PackagesTable';
+const TABLE_NAME = 'PackagesTable'; 
 
 exports.handler = async (event) => {
     console.log('Received event:', JSON.stringify(event));
 
-    // Step 1: Validate the request
-    if (!event.body) {
-        return generateResponse(400, 'Invalid request. Missing body.');
+    const { path, httpMethod } = event;
+
+    if (httpMethod === 'POST') {
+        if (path === '/package') {
+            return handleUploadPackage(event); // Upload functionality
+        } else if (path === '/packages') {
+            return handleQueryPackages(event); // Query functionality
+        }
     }
 
+    return generateResponse(405, 'Method Not Allowed');
+};
+
+const handleUploadPackage = async (event) => {
     let requestBody;
     try {
         requestBody = JSON.parse(event.body);
@@ -23,23 +32,15 @@ exports.handler = async (event) => {
 
     const { Name, Version, Content, JSProgram, URL, debloat } = requestBody;
 
-    // Step 2: Validate required fields
     if (!Name || !Version) {
-        return generateResponse(400, 'Invalid request. "Name" and "Version" are required.');
+        return generateResponse(400, '"Name" and "Version" are required.');
     }
     if ((!Content && !URL) || (Content && URL)) {
-        return generateResponse(400, 'Invalid request. Provide either "Content" or "URL", but not both.');
+        return generateResponse(400, 'Provide either "Content" or "URL", not both.');
     }
 
-    // Step 3: Generate a package ID (Name + Version)
     const packageId = `${Name}-${Version}`;
-    const packageMetadata = {
-        Name,
-        Version,
-        ID: packageId,
-    };
 
-    // Step 4: Handle content upload (if applicable)
     if (Content) {
         try {
             await s3
@@ -49,14 +50,12 @@ exports.handler = async (event) => {
                     Body: Buffer.from(Content, 'base64'),
                 })
                 .promise();
-            console.log('Content uploaded to S3.');
         } catch (error) {
             console.error('Error uploading to S3:', error);
             return generateResponse(500, 'Failed to upload content.');
         }
     }
 
-    // Step 5: Store metadata in DynamoDB
     const metadata = {
         PackageID: packageId,
         Name,
@@ -75,32 +74,68 @@ exports.handler = async (event) => {
                 Item: metadata,
             })
             .promise();
-        console.log('Metadata stored in DynamoDB:', metadata);
     } catch (error) {
         console.error('Error writing to DynamoDB:', error);
         return generateResponse(500, 'Failed to store package metadata.');
     }
 
-    // Step 6: Create the response payload
-    const responsePayload = {
-        metadata: packageMetadata,
+    return generateResponse(201, {
+        metadata: {
+            Name,
+            Version,
+            ID: packageId,
+        },
         data: {
             Content: Content ? '[Stored in S3]' : null,
             URL: URL || null,
             JSProgram,
         },
-    };
-
-    // Remove the `URL` field from the response if the input was `Content`
-    if (Content) {
-        delete responsePayload.data.URL;
-    }
-
-    console.log('Returning success response:', responsePayload);
-    return generateResponse(201, responsePayload);
+    });
 };
 
-// Utility function to generate a consistent HTTP response
+const handleQueryPackages = async (event) => {
+    let requestBody;
+    try {
+        requestBody = JSON.parse(event.body);
+    } catch (error) {
+        console.error('Error parsing JSON:', error);
+        return generateResponse(400, 'Invalid JSON in request body.');
+    }
+
+    if (!Array.isArray(requestBody)) {
+        return generateResponse(400, 'Request body must be an array.');
+    }
+
+    const queries = requestBody.map((query) => {
+        const { Name, Version } = query;
+
+        if (!Name || !Version) {
+            throw new Error('"Name" and "Version" are required in each query.');
+        }
+
+        return {
+            TableName: TABLE_NAME,
+            FilterExpression: 'Name = :name AND contains(Version, :version)',
+            ExpressionAttributeValues: {
+                ':name': Name,
+                ':version': Version,
+            },
+        };
+    });
+
+    try {
+        const results = await Promise.all(
+            queries.map((queryParams) => dynamodb.scan(queryParams).promise())
+        );
+        const packages = results.flatMap((result) => result.Items);
+
+        return generateResponse(200, packages);
+    } catch (error) {
+        console.error('Error querying packages:', error);
+        return generateResponse(500, 'Failed to query packages.');
+    }
+};
+
 function generateResponse(statusCode, body) {
     return {
         statusCode,
