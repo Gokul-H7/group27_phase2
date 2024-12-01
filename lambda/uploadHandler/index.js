@@ -11,10 +11,19 @@ const TABLE_NAME = "Packages";
 
 async function getGitHubToken() {
   try {
+    // Fetch the secret from Secrets Manager
     const secret = await secretsManager.getSecretValue({ SecretId: "GITHUB_TOKEN_2" }).promise();
-    console.log("Secret fetched:", secret);
+
+    // Validate the secret
+    if (!secret || !secret.SecretString) {
+      throw new Error("SecretString is undefined or missing.");
+    }
 
     const secretObject = JSON.parse(secret.SecretString);
+    if (!secretObject.token) {
+      throw new Error("Token field is missing in the secret.");
+    }
+
     return secretObject.token;
   } catch (error) {
     console.error("Error fetching GitHub token:", error.message);
@@ -50,10 +59,10 @@ async function updateDynamoDB(metadata) {
 
 exports.handler = async (event) => {
   try {
+    // Parse and validate the input
     const body = JSON.parse(event.body);
     const { Content, JSProgram, URL, Name, Version } = body;
 
-    // Validate required fields
     if (!Name || !Version) {
       return { statusCode: 400, body: JSON.stringify({ error: "Name and Version are required." }) };
     }
@@ -62,10 +71,10 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ error: "Provide either Content or URL, but not both." }) };
     }
 
-    const packageID = `${Name}_${Version}`; // Generate PackageID as "name_version"
+    const packageID = `${Name}_${Version}`; // Generate unique PackageID
     let contentBuffer;
 
-    // Fetch content from URL or use provided Content
+    // Handle Content or URL
     if (Content) {
       contentBuffer = Buffer.from(Content, "base64");
     } else if (URL) {
@@ -75,7 +84,8 @@ exports.handler = async (event) => {
       if (URL.includes("github.com")) {
         contentUrl = `${URL}/archive/refs/heads/main.zip`;
       } else if (URL.includes("npmjs.com")) {
-        contentUrl = `https://registry.npmjs.org/${URL.split("/").pop()}/latest`;
+        const packageName = URL.split("/").pop();
+        contentUrl = `https://registry.npmjs.org/${packageName}/latest`;
       } else {
         return { statusCode: 400, body: JSON.stringify({ error: "Unsupported URL format." }) };
       }
@@ -87,7 +97,7 @@ exports.handler = async (event) => {
     const s3Key = `${packageID}.zip`;
     await uploadToS3(s3Key, contentBuffer);
 
-    // Metadata for DynamoDB
+    // Prepare metadata
     const metadata = {
       PackageID: packageID,
       Version,
@@ -115,7 +125,13 @@ exports.handler = async (event) => {
 
     return { statusCode: 201, body: JSON.stringify(response) };
   } catch (err) {
-    console.error("Error:", err);
-    return { statusCode: 500, body: JSON.stringify({ error: "Internal Server Error", details: err.message }) };
+    console.error("Error:", err.message);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        error: "Internal Server Error",
+        details: err.message,
+      }),
+    };
   }
 };
