@@ -1,147 +1,171 @@
-const AWS = require('aws-sdk');
+const AWS = require("aws-sdk");
 const s3 = new AWS.S3();
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const axios = require("axios");
+const secretsManager = new AWS.SecretsManager();
 
-const BUCKET_NAME = 'packages-registry-27';
-const TABLE_NAME = 'PackagesTable'; 
+const bucketName = "package-storage";
+const tableName = "Packages";
 
 exports.handler = async (event) => {
-    console.log('Received event:', JSON.stringify(event));
+  try {
+    const body = JSON.parse(event.body);
+    const { JSProgram, URL, Name = "Unknown", Version = "1.0.0" } = body;
 
-    const { path, httpMethod } = event;
-
-    if (httpMethod === 'POST') {
-        if (path === '/package') {
-            return handleUploadPackage(event); // Upload functionality
-        } else if (path === '/packages') {
-            return handleQueryPackages(event); // Query functionality
-        }
+    if (!URL) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: "A 'URL' must be provided for this operation.",
+        }),
+      };
     }
 
-    return generateResponse(405, 'Method Not Allowed');
-};
+    // Determine the type of URL (GitHub or npm)
+    const isGitHub = URL.includes("github.com");
+    const isNpm = URL.includes("npmjs.com");
 
-const handleUploadPackage = async (event) => {
-    let requestBody;
-    try {
-        requestBody = JSON.parse(event.body);
-    } catch (error) {
-        console.error('Error parsing JSON:', error);
-        return generateResponse(400, 'Invalid JSON in request body.');
+    if (!isGitHub && !isNpm) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          error: "Unsupported URL. Only GitHub and npm links are supported.",
+        }),
+      };
     }
 
-    const { Name, Version, Content, JSProgram, URL, debloat } = requestBody;
-
-    if (!Name || !Version) {
-        return generateResponse(400, '"Name" and "Version" are required.');
-    }
-    if ((!Content && !URL) || (Content && URL)) {
-        return generateResponse(400, 'Provide either "Content" or "URL", not both.');
-    }
-
-    const packageId = `${Name}-${Version}`;
-
-    if (Content) {
-        try {
-            await s3
-                .putObject({
-                    Bucket: BUCKET_NAME,
-                    Key: `packages/${packageId}.zip`,
-                    Body: Buffer.from(Content, 'base64'),
-                })
-                .promise();
-        } catch (error) {
-            console.error('Error uploading to S3:', error);
-            return generateResponse(500, 'Failed to upload content.');
-        }
+    // Fetch package details based on the URL type
+    let packageDetails;
+    if (isGitHub) {
+      // Get the GitHub token from AWS Secrets Manager
+      const githubToken = await getSecret("GITHUB_TOKEN_2");
+      packageDetails = await fetchGitHubPackageDetails(URL, githubToken);
+    } else if (isNpm) {
+      packageDetails = await fetchNpmPackageDetails(URL);
     }
 
+    if (!packageDetails) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({
+          error: "Failed to retrieve package details from the provided URL.",
+        }),
+      };
+    }
+
+    // Generate a unique PackageID and S3 key
+    const packageId = packageDetails.id || require("crypto").randomUUID();
+    const s3Key = `packages/${packageId}/${Version}/file.zip`;
+
+    // Upload details to S3
+    const packageContent = Buffer.from(JSON.stringify(packageDetails), "utf-8");
+    await s3
+      .putObject({
+        Bucket: bucketName,
+        Key: s3Key,
+        Body: packageContent,
+      })
+      .promise();
+
+    // Save metadata to DynamoDB
     const metadata = {
-        PackageID: packageId,
-        Name,
-        Version,
-        Timestamp: new Date().toISOString(),
-        ContentStoredInS3: !!Content,
-        URL,
-        JSProgram,
-        Debloat: debloat,
+      PackageID: packageId,
+      Version,
+      Name: packageDetails.name || Name,
+      JSProgram,
+      S3Key: s3Key,
+      SourceURL: URL,
     };
 
-    try {
-        await dynamodb
-            .put({
-                TableName: TABLE_NAME,
-                Item: metadata,
-            })
-            .promise();
-    } catch (error) {
-        console.error('Error writing to DynamoDB:', error);
-        return generateResponse(500, 'Failed to store package metadata.');
-    }
+    await dynamoDB
+      .put({
+        TableName: tableName,
+        Item: metadata,
+      })
+      .promise();
 
-    return generateResponse(201, {
+    // Success response
+    return {
+      statusCode: 201,
+      body: JSON.stringify({
         metadata: {
-            Name,
-            Version,
-            ID: packageId,
+          Name: metadata.Name,
+          Version,
+          ID: packageId,
         },
         data: {
-            Content: Content ? '[Stored in S3]' : null,
-            URL: URL || null,
-            JSProgram,
+          S3Key: s3Key,
+          JSProgram,
+          SourceURL: URL,
         },
-    });
-};
-
-const handleQueryPackages = async (event) => {
-    let requestBody;
-    try {
-        requestBody = JSON.parse(event.body);
-    } catch (error) {
-        console.error('Error parsing JSON:', error);
-        return generateResponse(400, 'Invalid JSON in request body.');
-    }
-
-    if (!Array.isArray(requestBody)) {
-        return generateResponse(400, 'Request body must be an array.');
-    }
-
-    const queries = requestBody.map((query) => {
-        const { Name, Version } = query;
-
-        if (!Name || !Version) {
-            throw new Error('"Name" and "Version" are required in each query.');
-        }
-
-        return {
-            TableName: TABLE_NAME,
-            FilterExpression: 'Name = :name AND contains(Version, :version)',
-            ExpressionAttributeValues: {
-                ':name': Name,
-                ':version': Version,
-            },
-        };
-    });
-
-    try {
-        const results = await Promise.all(
-            queries.map((queryParams) => dynamodb.scan(queryParams).promise())
-        );
-        const packages = results.flatMap((result) => result.Items);
-
-        return generateResponse(200, packages);
-    } catch (error) {
-        console.error('Error querying packages:', error);
-        return generateResponse(500, 'Failed to query packages.');
-    }
-};
-
-function generateResponse(statusCode, body) {
-    return {
-        statusCode,
-        body: JSON.stringify(typeof body === 'object' ? body : { message: body }),
-        headers: {
-            'Content-Type': 'application/json',
-        },
+      }),
     };
+  } catch (error) {
+    console.error("Error processing the request:", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: "Internal Server Error", details: error.message }),
+    };
+  }
+};
+
+// Helper to fetch the GitHub token from Secrets Manager
+async function getSecret(secretName) {
+  const response = await secretsManager
+    .getSecretValue({ SecretId: secretName })
+    .promise();
+  return JSON.parse(response.SecretString).GITHUB_TOKEN_2;
+}
+
+// Helper to fetch package details from GitHub
+async function fetchGitHubPackageDetails(githubUrl, token) {
+  try {
+    // Extract owner and repo from GitHub URL
+    const [, owner, repo] = githubUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+
+    // GitHub API request
+    const response = await axios.get(
+      `https://api.github.com/repos/${owner}/${repo}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      }
+    );
+
+    return {
+      id: response.data.id,
+      name: response.data.name,
+      description: response.data.description,
+      stars: response.data.stargazers_count,
+      forks: response.data.forks_count,
+      watchers: response.data.watchers_count,
+    };
+  } catch (error) {
+    console.error("Failed to fetch GitHub package details:", error);
+    return null;
+  }
+}
+
+// Helper to fetch package details from npm
+async function fetchNpmPackageDetails(npmUrl) {
+  try {
+    // Extract package name from npm URL
+    const [, packageName] = npmUrl.match(/npmjs\.com\/package\/([^\/]+)/);
+
+    // NPM registry API request
+    const response = await axios.get(`https://registry.npmjs.org/${packageName}`);
+
+    return {
+      id: response.data._id,
+      name: response.data.name,
+      description: response.data.description,
+      version: response.data["dist-tags"].latest,
+      license: response.data.license,
+    };
+  } catch (error) {
+    console.error("Failed to fetch NPM package details:", error);
+    return null;
+  }
 }
