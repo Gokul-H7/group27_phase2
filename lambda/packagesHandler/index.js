@@ -1,115 +1,101 @@
 const AWS = require("aws-sdk");
-const semver = require("semver"); // For handling version ranges
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
-exports.handler = async (event) => {
-  try {
-    const queries = Array.isArray(event.body)
-      ? JSON.parse(event.body) // If input is an array, parse it as-is
-      : [JSON.parse(event.body)]; // Wrap a single object in an array
+const parseVersionRange = (version) => {
+    if (typeof version !== "string") throw new Error("Version must be a string.");
 
-    if (queries.length === 0) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Request must include at least one query" }),
-      };
-    }
-
-    const tableName = "Packages";
-    let results = [];
-    let seenPackages = new Set(); // To track unique packages
-    let lastEvaluatedKey = null; // For pagination
-    let paginationOffset = null;
-
-    for (const query of queries) {
-      const { Name, Version, Offset } = query;
-
-      if (!Name) {
-        return {
-          statusCode: 400,
-          body: JSON.stringify({ error: "Each query must include a 'Name'" }),
-        };
-      }
-
-      let params = { TableName: tableName };
-
-      if (Name === "*" && !Version) {
-        // Fetch all records from the table with pagination
-        params = {
-          TableName: tableName,
-          ExclusiveStartKey: Offset || null, // Use offset if provided
-        };
-      } else if (Name !== "*" && !Version) {
-        // Filter by Name only
-        params = {
-          TableName: tableName,
-          FilterExpression: "Name = :name",
-          ExpressionAttributeValues: { ":name": Name },
-          ExclusiveStartKey: Offset || null,
-        };
-      } else if (Name !== "*" && Version) {
-        // Filter by Name and Version
-        const versionRange = getVersionRange(Version);
-        params = {
-          TableName: tableName,
-          FilterExpression: "Name = :name AND Version BETWEEN :minVersion AND :maxVersion",
-          ExpressionAttributeValues: {
-            ":name": Name,
-            ":minVersion": versionRange.min,
-            ":maxVersion": versionRange.max,
-          },
-          ExclusiveStartKey: Offset || null,
-        };
-      }
-
-      // Query DynamoDB
-      const response = await dynamoDB.scan(params).promise();
-      paginationOffset = response.LastEvaluatedKey; // Save for next page
-
-      // Collect unique packages
-      for (const item of response.Items) {
-        const packageKey = `${item.Name}-${item.Version}`;
-        if (!seenPackages.has(packageKey)) {
-          seenPackages.add(packageKey);
-          results.push({
-            Version: item.Version,
-            Name: item.Name,
-            ID: item.PackageID,
-          });
+    if (version.startsWith("~")) {
+        const [major, minor, patch] = version.slice(1).split(".").map(Number);
+        if (patch !== undefined) {
+            return { start: `${major}.${minor}.${patch}`, end: `${major}.${minor + 1}.0` };
+        } else if (minor !== undefined) {
+            return { start: `${major}.${minor}.0`, end: `${major}.${minor + 1}.0` };
+        } else {
+            return { start: `${major}.0.0`, end: `${major + 1}.0.0` };
         }
-      }
+    } else if (version.startsWith("^")) {
+        const [major, minor, patch] = version.slice(1).split(".").map(Number);
+        if (major > 0) {
+            return { start: `${major}.${minor || 0}.${patch || 0}`, end: `${major + 1}.0.0` };
+        } else if (minor > 0) {
+            return { start: `${major}.${minor}.${patch || 0}`, end: `${major}.${minor + 1}.0` };
+        } else {
+            return { start: `${major}.${minor}.${patch}`, end: `${major}.${minor}.${patch + 1}` };
+        }
+    } else {
+        return { start: version, end: version };
     }
-
-    // Return the aggregated unique results with pagination header
-    return {
-      statusCode: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Next-Offset": paginationOffset ? JSON.stringify(paginationOffset) : null,
-      },
-      body: JSON.stringify(results),
-    };
-  } catch (error) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
-    };
-  }
 };
 
-// Helper function to parse version ranges
-function getVersionRange(version) {
-  if (semver.valid(version)) {
-    // Exact version
-    return { min: version, max: version };
-  } else if (semver.validRange(version)) {
-    const range = semver.minVersion(version);
-    const max = semver.valid(semver.inc(range, "major")) || semver.inc(range, "minor");
-    return { min: range, max };
-  } else if (version.includes("-")) {
-    const [min, max] = version.split("-");
-    return { min, max };
-  } else {
-    throw new Error(`Invalid version range: ${version}`);
-  }
-}
+exports.handler = async (event) => {
+    try {
+        if (!event.body) {
+            throw new Error("Request body is empty or undefined.");
+        }
+
+        const queries = JSON.parse(event.body);
+        if (!Array.isArray(queries)) {
+            throw new Error("Invalid input format, expected an array of queries.");
+        }
+
+        let results = [];
+        for (const query of queries) {
+            if (!query.Name) throw new Error("Each query must have a 'Name' field.");
+
+            if (query.Name === "*") {
+                const params = {
+                    TableName: "Packages",
+                };
+                const data = await dynamoDB.scan(params).promise();
+                results = results.concat(data.Items || []);
+            } else {
+                const { Name, Version } = query;
+
+                let params = {
+                    TableName: "Packages",
+                    KeyConditionExpression: "Name = :name",
+                    ExpressionAttributeValues: {
+                        ":name": Name,
+                    },
+                };
+
+                if (Version) {
+                    const { start, end } = parseVersionRange(Version);
+                    params.FilterExpression = "#version BETWEEN :start AND :end";
+                    params.ExpressionAttributeNames = {
+                        "#version": "Version",
+                    };
+                    params.ExpressionAttributeValues[":start"] = start;
+                    params.ExpressionAttributeValues[":end"] = end;
+                }
+
+                const data = await dynamoDB.query(params).promise();
+                results = results.concat(data.Items || []);
+            }
+        }
+
+        const formattedResults = results.map((item) => ({
+            Version: item.Version,
+            Name: item.Name,
+            ID: item.ID,
+        }));
+
+        return {
+            statusCode: 200,
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(formattedResults || []),
+        };
+    } catch (error) {
+        console.error("Error processing request:", error);
+
+        return {
+            statusCode: 500,
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ error: error.message || "An unknown error occurred." }),
+        };
+    }
+};
