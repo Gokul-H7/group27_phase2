@@ -7,7 +7,7 @@ exports.handler = async (event) => {
         console.log("Reset endpoint called.");
 
         const tableName = "Packages"; 
-        const bucketName = "packages-registry-27";
+        const bucketName = "packages-registry-27"; 
 
         // Scan the DynamoDB table to retrieve all items
         const scanParams = { TableName: tableName };
@@ -46,13 +46,13 @@ exports.handler = async (event) => {
             const deleteDynamoParams = {
                 TableName: tableName,
                 Key: {
-                    PackageID: item.PackageID, // Ensure PackageID is your primary key
+                    PackageID: item.PackageID, // Replace with your primary key schema
                 },
             };
 
             try {
-                await dynamoDB.delete(deleteDynamoParams).promise();
-                console.log(`Deleted DynamoDB item: ${item.PackageID}`);
+                const result = await dynamoDB.delete(deleteDynamoParams).promise();
+                console.log(`Deleted DynamoDB item: ${JSON.stringify(result)}`);
             } catch (error) {
                 console.error(`Failed to delete DynamoDB item ${item.PackageID}:`, error);
                 // Continue even if a DynamoDB deletion fails
