@@ -1,57 +1,135 @@
 const AWS = require("aws-sdk");
 const https = require("https");
-const { v4: uuidv4 } = require("uuid");
-
 const s3 = new AWS.S3();
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const secretsManager = new AWS.SecretsManager();
+const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
 const BUCKET_NAME = "package-registry-27";
 const TABLE_NAME = "Packages";
 
-async function getGitHubToken() {
+exports.handler = async (event) => {
   try {
-    // Fetch the secret
-    const secret = await secretsManager.getSecretValue({ SecretId: "GITHUB_TOKEN_2" }).promise();
+    // Parse and validate request body
+    const body = JSON.parse(event.body);
+    const { Name, Version, JSProgram, URL, Content } = body;
 
-    // Log the raw secret for debugging
-    console.log("Raw secret response:", JSON.stringify(secret));
-
-    // Validate the secret
-    if (!secret || !secret.SecretString) {
-      throw new Error("SecretString is undefined or missing.");
+    if (!Name || !Version) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Name and Version are required." }),
+      };
     }
 
-    const secretObject = JSON.parse(secret.SecretString);
-    if (!secretObject.token) {
-      throw new Error("Token field is missing in the secret.");
+    if ((Content && URL) || (!Content && !URL)) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Provide either Content or URL, but not both." }),
+      };
     }
 
-    return secretObject.token;
+    const packageID = `${Name}_${Version}`; // Unique ID for the package
+    const s3Key = `${packageID}.zip`;
+
+    let contentBuffer;
+
+    if (URL) {
+      // Handle URL case
+      const githubToken = await getSecret("GITHUB_TOKEN_2");
+      contentBuffer = await downloadFromURL(URL, githubToken);
+    } else if (Content) {
+      // Handle Content case
+      contentBuffer = Buffer.from(Content, "base64");
+    } else {
+      throw new Error("Invalid input: URL or Content is required.");
+    }
+
+    // Upload to S3
+    await uploadToS3(s3Key, contentBuffer);
+
+    // Update DynamoDB
+    const metadata = {
+      PackageID: packageID,
+      Version,
+      Name,
+      Metadata: { JSProgram },
+      S3Key: s3Key,
+    };
+    await updateDynamoDB(metadata);
+
+    // Response
+    return {
+      statusCode: 201,
+      body: JSON.stringify({
+        metadata: { Name, Version, ID: packageID },
+        data: {
+          Content: contentBuffer.toString("base64"),
+          JSProgram,
+          URL,
+        },
+      }),
+    };
   } catch (error) {
-    console.error("Error fetching GitHub token:", error.message);
-    throw new Error("Failed to retrieve GitHub token.");
+    console.error("Error:", error.message);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        error: "Internal Server Error",
+        details: error.message,
+      }),
+    };
   }
-}
+};
 
-async function fetchContent(url, token = null) {
+// Download content from a URL (GitHub or other valid URLs)
+async function downloadFromURL(url, token) {
   return new Promise((resolve, reject) => {
-    const options = token
-      ? { headers: { Authorization: `Bearer ${token}`, "User-Agent": "AWS-Lambda" } }
-      : {};
-    https.get(url, options, (res) => {
-      let data = [];
-      res.on("data", (chunk) => data.push(chunk));
-      res.on("end", () => resolve(Buffer.concat(data)));
-    }).on("error", (err) => reject(err));
+    const repoNameMatch = url.match(/github\.com\/([^\/]+\/[^\/]+)$/);
+    if (!repoNameMatch) return reject(new Error("Invalid GitHub URL format"));
+
+    const repoName = repoNameMatch[1];
+    const downloadUrl = `https://api.github.com/repos/${repoName}/zipball`;
+
+    const options = {
+      headers: {
+        Authorization: `token ${token}`,
+        "User-Agent": "AWS-Lambda-Function",
+      },
+    };
+
+    https.get(downloadUrl, options, (response) => {
+      if (response.statusCode === 302 && response.headers.location) {
+        https.get(response.headers.location, options, (redirectedResponse) => {
+          if (redirectedResponse.statusCode !== 200) {
+            return reject(new Error(`Failed to download repository: ${redirectedResponse.statusCode}`));
+          }
+
+          const chunks = [];
+          redirectedResponse.on("data", (chunk) => chunks.push(chunk));
+          redirectedResponse.on("end", () => resolve(Buffer.concat(chunks)));
+        }).on("error", reject);
+      } else if (response.statusCode === 200) {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => resolve(Buffer.concat(chunks)));
+      } else {
+        reject(new Error(`Failed to download repository: ${response.statusCode}`));
+      }
+    }).on("error", reject);
   });
 }
 
+// Upload content to S3
 async function uploadToS3(key, body) {
-  const params = { Bucket: BUCKET_NAME, Key: key, Body: body };
+  const params = {
+    Bucket: BUCKET_NAME,
+    Key: key,
+    Body: body,
+    ContentType: "application/zip",
+  };
   return s3.upload(params).promise();
 }
 
+// Update DynamoDB
 async function updateDynamoDB(metadata) {
   const params = {
     TableName: TABLE_NAME,
@@ -60,81 +138,12 @@ async function updateDynamoDB(metadata) {
   return dynamoDB.put(params).promise();
 }
 
-exports.handler = async (event) => {
-  try {
-    // Parse and validate the input
-    const body = JSON.parse(event.body);
-    const { Content, JSProgram, URL, Name, Version } = body;
-
-    if (!Name || !Version) {
-      return { statusCode: 400, body: JSON.stringify({ error: "Name and Version are required." }) };
-    }
-
-    if ((Content && URL) || (!Content && !URL)) {
-      return { statusCode: 400, body: JSON.stringify({ error: "Provide either Content or URL, but not both." }) };
-    }
-
-    const packageID = `${Name}_${Version}`; // Generate unique PackageID
-    let contentBuffer;
-
-    // Handle Content or URL
-    if (Content) {
-      contentBuffer = Buffer.from(Content, "base64");
-    } else if (URL) {
-      const token = URL.includes("github.com") ? await getGitHubToken() : null;
-      let contentUrl;
-
-      if (URL.includes("github.com")) {
-        contentUrl = `${URL}/archive/refs/heads/main.zip`;
-      } else if (URL.includes("npmjs.com")) {
-        const packageName = URL.split("/").pop();
-        contentUrl = `https://registry.npmjs.org/${packageName}/latest`;
-      } else {
-        return { statusCode: 400, body: JSON.stringify({ error: "Unsupported URL format." }) };
-      }
-
-      contentBuffer = await fetchContent(contentUrl, token);
-    }
-
-    // Upload to S3
-    const s3Key = `${packageID}.zip`;
-    await uploadToS3(s3Key, contentBuffer);
-
-    // Prepare metadata
-    const metadata = {
-      PackageID: packageID,
-      Version,
-      Name,
-      Metadata: { JSProgram },
-      S3Key: s3Key,
-    };
-
-    // Update DynamoDB
-    await updateDynamoDB(metadata);
-
-    // Response
-    const response = {
-      metadata: {
-        Name,
-        Version,
-        ID: packageID,
-      },
-      data: {
-        Content: contentBuffer.toString("base64"),
-        JSProgram,
-        URL,
-      },
-    };
-
-    return { statusCode: 201, body: JSON.stringify(response) };
-  } catch (err) {
-    console.error("Error:", err.message);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: "Internal Server Error",
-        details: err.message,
-      }),
-    };
+// Retrieve secret from AWS Secrets Manager
+async function getSecret(secretName) {
+  const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+  if (data && data.SecretString) {
+    const secret = JSON.parse(data.SecretString);
+    return secret.token || secret.GITHUB_TOKEN_2;
   }
-};
+  throw new Error(`Secret ${secretName} not found or invalid`);
+}
