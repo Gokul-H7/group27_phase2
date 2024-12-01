@@ -28,6 +28,7 @@ const parseVersionRange = (version) => {
 };
 
 exports.handler = async (event) => {
+    console.log("Event received:", JSON.stringify(event, null, 2));
     try {
         if (!event.body) {
             throw new Error("Request body is empty or undefined.");
