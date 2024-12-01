@@ -4,7 +4,7 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const axios = require("axios");
 const secretsManager = new AWS.SecretsManager();
 
-const bucketName = "package-storage";
+const bucketName = "package-registry-27";
 const tableName = "Packages";
 
 exports.handler = async (event) => {
