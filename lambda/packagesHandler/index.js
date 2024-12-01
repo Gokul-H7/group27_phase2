@@ -33,9 +33,11 @@ exports.handler = async (event) => {
             throw new Error("Request body is empty or undefined.");
         }
 
-        const queries = JSON.parse(event.body);
+        let queries = JSON.parse(event.body);
+
+        // Handle single query case by wrapping it into an array
         if (!Array.isArray(queries)) {
-            throw new Error("Invalid input format, expected an array of queries.");
+            queries = [queries];
         }
 
         let results = [];
