@@ -61,7 +61,10 @@ exports.handler = async (event) => {
 
                 let params = {
                     TableName: "Packages",
-                    KeyConditionExpression: "Name = :name",
+                    KeyConditionExpression: "#name = :name",
+                    ExpressionAttributeNames: {
+                        "#name": "Name", // Alias the reserved keyword
+                    },
                     ExpressionAttributeValues: {
                         ":name": Name,
                     },
@@ -70,9 +73,7 @@ exports.handler = async (event) => {
                 if (Version) {
                     const { start, end } = parseVersionRange(Version);
                     params.FilterExpression = "#version BETWEEN :start AND :end";
-                    params.ExpressionAttributeNames = {
-                        "#version": "Version",
-                    };
+                    params.ExpressionAttributeNames["#version"] = "Version";
                     params.ExpressionAttributeValues[":start"] = start;
                     params.ExpressionAttributeValues[":end"] = end;
                 }
