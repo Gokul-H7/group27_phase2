@@ -11,8 +11,11 @@ const TABLE_NAME = "Packages";
 
 async function getGitHubToken() {
   try {
-    // Fetch the secret from Secrets Manager
+    // Fetch the secret
     const secret = await secretsManager.getSecretValue({ SecretId: "GITHUB_TOKEN_2" }).promise();
+
+    // Log the raw secret for debugging
+    console.log("Raw secret response:", JSON.stringify(secret));
 
     // Validate the secret
     if (!secret || !secret.SecretString) {
