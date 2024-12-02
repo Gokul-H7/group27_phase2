@@ -1,26 +1,36 @@
 exports.handler = async (event) => {
   const AWS = require("aws-sdk");
   const dynamoDB = new AWS.DynamoDB.DocumentClient();
-  const tableName = "Packages"; // Replace with your DynamoDB table name
+  const s3 = new AWS.S3();
+  const tableName = "Packages"; // Replace with your table name
+  const bucketName = "packages-registry-27"; // Replace with your S3 bucket name
 
   try {
+      console.log("Event received:", JSON.stringify(event, null, 2));
+
+      // Extract the {id} path parameter
       const { id } = event.pathParameters || {};
       if (!id) {
           throw new Error("Package ID is required.");
       }
 
-      // Extract PackageID and Version from the id
-      const [PackageID, Version] = id.split("-");
+      // Use the full ID as the PackageID (partition key)
+      const PackageID = id;
 
+      // Extract Version from the PackageID
+      const Version = id.split("-").slice(-1)[0]; // Extract version (last part of ID)
+      console.log("Extracted PackageID:", PackageID);
+      console.log("Extracted Version:", Version);
+
+      // Query DynamoDB for the package metadata
       const getMetadataParams = {
           TableName: tableName,
           Key: {
-              PackageID, // Partition key
-              Version    // Sort key
+              PackageID,
+              Version
           }
       };
 
-      // Fetch metadata from DynamoDB
       const metadataResult = await dynamoDB.get(getMetadataParams).promise();
       const metadata = metadataResult.Item;
 
@@ -32,9 +42,26 @@ exports.handler = async (event) => {
           };
       }
 
-      // Fetch package content from S3 (logic omitted for brevity)
-      // ...
+      console.log("DynamoDB Metadata:", JSON.stringify(metadata, null, 2));
 
+      // Fetch the package content (ZIP file) from S3
+      let content = "";
+      if (metadata.S3Key) {
+          try {
+              const s3Params = {
+                  Bucket: bucketName,
+                  Key: metadata.S3Key
+              };
+              console.log("Fetching content from S3 with key:", metadata.S3Key);
+              const s3Data = await s3.getObject(s3Params).promise();
+              content = s3Data.Body.toString("base64"); // Encode content as Base64
+          } catch (error) {
+              console.error(`Failed to fetch S3 content for ${metadata.S3Key}:`, error);
+              throw new Error("Error retrieving package content from S3.");
+          }
+      }
+
+      // Build the response
       return {
           statusCode: 200,
           headers: { "Content-Type": "application/json" },
@@ -45,8 +72,8 @@ exports.handler = async (event) => {
                   ID: metadata.PackageID
               },
               data: {
-                  Content: "Base64-encoded-content",
-                  JSProgram: metadata.JSProgram,
+                  Content: content, // Base64-encoded ZIP file content
+                  JSProgram: metadata.JSProgram || null,
                   URL: metadata.URL || null
               }
           })
