@@ -7,7 +7,7 @@ exports.handler = async (event) => {
         console.log("Reset endpoint called.");
 
         const tableName = "Packages"; 
-        const bucketName = "your-s3-bucket-name"; 
+        const bucketName = "packages-registry-27"; 
 
         // Scan the DynamoDB table to retrieve all items
         const scanParams = { TableName: tableName };
