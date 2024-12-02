@@ -44,6 +44,9 @@ exports.handler = async (event) => {
 
       console.log("DynamoDB Metadata:", JSON.stringify(metadata, null, 2));
 
+      // Extract URL from Metadata map attribute
+      const URL = metadata.Metadata && metadata.Metadata.url ? metadata.Metadata.url : null;
+
       // Fetch the package content (ZIP file) from S3
       let content = "";
       if (metadata.S3Key) {
@@ -74,7 +77,7 @@ exports.handler = async (event) => {
               data: {
                   Content: content, // Base64-encoded ZIP file content
                   JSProgram: metadata.JSProgram || null,
-                  URL: metadata.URL || null
+                  URL: URL // Extracted from Metadata map
               }
           })
       };
