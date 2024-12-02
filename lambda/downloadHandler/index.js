@@ -44,9 +44,6 @@ exports.handler = async (event) => {
 
       console.log("DynamoDB Metadata:", JSON.stringify(metadata, null, 2));
 
-      // Extract URL from Metadata map attribute
-      const URL = metadata.Metadata && metadata.Metadata.URL ? metadata.Metadata.URL : null;
-
       // Fetch the package content (ZIP file) from S3
       let content = "";
       if (metadata.S3Key) {
@@ -64,7 +61,17 @@ exports.handler = async (event) => {
           }
       }
 
-      // Build the response
+      // Build the response dynamically
+      const dataResponse = {
+          Content: content, // Base64-encoded ZIP file content
+          JSProgram: metadata.JSProgram || null
+      };
+
+      // Add the URL to the response only if it exists
+      if (metadata.Metadata?.URL) {
+          dataResponse.URL = metadata.Metadata.URL;
+      }
+
       return {
           statusCode: 200,
           headers: { "Content-Type": "application/json" },
@@ -74,11 +81,7 @@ exports.handler = async (event) => {
                   Version: metadata.Version,
                   ID: metadata.PackageID
               },
-              data: {
-                  Content: content, // Base64-encoded ZIP file content
-                  JSProgram: metadata.JSProgram || null,
-                  URL: URL // Extracted from Metadata map
-              }
+              data: dataResponse
           })
       };
   } catch (error) {
