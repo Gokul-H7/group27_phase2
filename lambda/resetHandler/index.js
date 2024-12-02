@@ -7,7 +7,7 @@ exports.handler = async (event) => {
         console.log("Reset endpoint called.");
 
         const tableName = "Packages"; 
-        const bucketName = "packages-registry-27"; 
+        const bucketName = "your-s3-bucket-name"; 
 
         // Scan the DynamoDB table to retrieve all items
         const scanParams = { TableName: tableName };
@@ -46,15 +46,16 @@ exports.handler = async (event) => {
             const deleteDynamoParams = {
                 TableName: tableName,
                 Key: {
-                    PackageID: item.PackageID, // Replace with your primary key schema
+                    PackageID: item.PackageID, // Partition key
+                    Version: item.Version,     // Sort key
                 },
             };
 
             try {
-                const result = await dynamoDB.delete(deleteDynamoParams).promise();
-                console.log(`Deleted DynamoDB item: ${JSON.stringify(result)}`);
+                await dynamoDB.delete(deleteDynamoParams).promise();
+                console.log(`Deleted DynamoDB item: ${item.PackageID}, Version: ${item.Version}`);
             } catch (error) {
-                console.error(`Failed to delete DynamoDB item ${item.PackageID}:`, error);
+                console.error(`Failed to delete DynamoDB item ${item.PackageID}, Version: ${item.Version}:`, error);
                 // Continue even if a DynamoDB deletion fails
             }
         }
