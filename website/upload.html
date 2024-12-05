@@ -8,5 +8,11 @@
 
 <body>
     <h1> Upload Page </h1>
+    <form action="/upload" method="post" enctype="multipart/form-data"> 
+        <label for="file-upload">Choose a file:</label> 
+        <input type="file" id="file-upload" name="file"> 
+        <br><br> 
+        <input type="submit" value="Upload"> 
+    </form>
 </body>
 </html>
