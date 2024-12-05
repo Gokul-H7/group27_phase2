@@ -9,7 +9,6 @@
         } 
 
         .linkButton { display: inline-block; 
-            position: absolute;
             padding: 10px 20px; 
             font-size: 16px; 
             cursor: pointer; 
@@ -30,6 +29,18 @@
         .linkButton:active { background-color: #3e8e41; 
             box-shadow: 0 5px #666; 
             transform: translateY(4px); 
+        }
+
+        #uploadButton{
+            position: absolute;
+            top: 50px;
+            left: 50px;
+        }
+
+        #downloadButton{
+            position: absolute;
+            top: 50px;
+            left: 150px;
         }
 
         .container { 
@@ -62,7 +73,8 @@
     <h1>ACME Module Repository</h1>
     <a href="https://www.youtube.com/" class = "linkButton" >Test Button</a>
     <div class="container"> 
-        <a href = "https://acme-website-27.s3.us-east-2.amazonaws.com/upload.html" class = "linkButton">Upload Button</a>
+        <a href = "https://acme-website-27.s3.us-east-2.amazonaws.com/upload.html" class = "linkButton" id="uploadButton">Upload</a>
+        <a href = "https://acme-website-27.s3.us-east-2.amazonaws.com/download.html" class = "linkButton" id="downloadButton">Download</a>
         <div class="overlay">Overlay</div> 
         <div class="content">Content</div> 
     </div>
