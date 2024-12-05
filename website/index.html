@@ -30,10 +30,23 @@
             box-shadow: 0 5px #666; 
             transform: translateY(4px); 
         }
+
+        .container { 
+            display: flex; 
+        justify-content: center; /* Center horizontally */ 
+        align-items: center; /* Center vertically */ 
+        height: 100vh; /* Full viewport height */ 
+        } 
+        
+        .item { 
+            padding: 20px; 
+            background-color: lightblue; 
+        }
     </style>
 </head>
 <body>
     <h1>ACME Module Repository</h1>
     <a href="https://www.youtube.com/" class = "button" >Test Button</a>
+    <div class="container"> <div class="item">Centered Item</div> </div>
 </body>
 </html>
