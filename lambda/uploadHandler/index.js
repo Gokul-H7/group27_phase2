@@ -5,7 +5,21 @@ const secretsManager = new AWS.SecretsManager();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
 exports.handler = async (event) => {
-  const { Name, Version, URL, Content, JSProgram, debloat = false } = event;
+  let body;
+
+  // Parse the event body
+  try {
+    body = JSON.parse(event.body); // Parse the incoming JSON
+  } catch (error) {
+    return {
+      statusCode: 400,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "Invalid JSON format" }, null, 2),
+    };
+  }
+
+  // Extract parameters from the parsed body
+  const { Name, Version, URL, Content, JSProgram, debloat = false } = body;
 
   // Validate mandatory inputs
   if (!Name || !Version || !JSProgram) {
@@ -136,6 +150,7 @@ exports.handler = async (event) => {
     };
   }
 };
+
 
 
 // Helper function to process URL, download the content, and upload it to S3
