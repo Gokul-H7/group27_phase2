@@ -1,7 +1,7 @@
 <head>
     <title>ACME Module Repository</title>
     <meta charset="UTF-8"> 
-    <meta name="description" content="Free Web tutorials"> 
+    <meta name="description" content="An upload to the s3"> 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 </head>
@@ -9,9 +9,16 @@
 <body>
     <h1> Upload Page </h1>
     <form action="/upload" method="post" enctype="multipart/form-data"> 
+        <label for="name">File Name:</label> 
+        <input type="text" id="name" name="name" required><br><br>
+
+        <label for="version">Version:</label> 
+        <input type="text" id="version" name="version" required><br><br>
+        
         <label for="file-upload">Choose a file:</label> 
         <input type="file" id="file-upload" name="file"> 
         <br><br> 
+        
         <input type="submit" value="Upload"> 
     </form>
 
