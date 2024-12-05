@@ -34,25 +34,30 @@ exports.handler = async (event) => {
     try {
         console.log("Event received:", JSON.stringify(event, null, 2));
 
-        // Parse input, handling both API Gateway and direct Lambda invocation formats
-        let queries;
-        if (event.body) {
-            queries = JSON.parse(event.body);
-        } else {
-            queries = event;
+        // Parse the request body
+        if (!event.body) {
+            return {
+                statusCode: 400,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ error: "Request body is required." }),
+            };
         }
 
+        const queries = JSON.parse(event.body);
+
         // Wrap single query in array if necessary
-        if (!Array.isArray(queries)) {
-            queries = [queries];
-        }
+        const queryArray = Array.isArray(queries) ? queries : [queries];
 
         let results = [];
         let seenPackageIDs = new Set(); // Track processed PackageIDs to avoid duplicates
 
-        for (const query of queries) {
+        for (const query of queryArray) {
             if (!query.Name) {
-                throw new Error("Each query must have a 'Name' field.");
+                return {
+                    statusCode: 400,
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ error: "Each query must have a 'Name' field." }),
+                };
             }
 
             let queryResults = [];
@@ -114,7 +119,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 200,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(results),
+            body: JSON.stringify(results, null, 2),
         };
     } catch (error) {
         console.error("Error processing request:", error);
@@ -122,7 +127,7 @@ exports.handler = async (event) => {
         return {
             statusCode: 500,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ error: error.message || "An unknown error occurred." }),
+            body: JSON.stringify({ error: error.message || "An unknown error occurred." }, null, 2),
         };
     }
 };
