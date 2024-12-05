@@ -1,6 +1,8 @@
 const AWS = require("aws-sdk");
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
+const MAX_PACKAGE_COUNT = 100; // Limit for the number of packages returned
+
 // Helper function to parse version ranges
 const parseVersionRange = (version) => {
     if (version.includes("-")) {
@@ -30,11 +32,6 @@ const parseVersionRange = (version) => {
     return { start: version, end: version };
 };
 
-// Helper function to extract Name from PackageID
-const extractNameFromPackageID = (packageID) => {
-    return packageID.replace(/-\d+\.\d+\.\d+$/, "");
-};
-
 exports.handler = async (event) => {
     try {
         console.log("Event received:", JSON.stringify(event, null, 2));
@@ -57,49 +54,52 @@ exports.handler = async (event) => {
         let seenPackageIDs = new Set(); // Track processed PackageIDs to avoid duplicates
 
         for (const query of queryArray) {
-            const { Name, Version } = query;
+            if (!query.Name) {
+                return {
+                    statusCode: 400,
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ error: "Each query must have a 'Name' field." }),
+                };
+            }
 
             let queryResults = [];
-            if (Name === "*") {
+            if (query.Name === "*") {
                 // Wildcard query: retrieve all packages
                 const params = { TableName: "Packages" };
                 const data = await dynamoDB.scan(params).promise();
+                queryResults = data.Items || [];
+            } else {
+                const { Name, Version } = query;
 
-                if (Version) {
-                    const { start, end } = parseVersionRange(Version);
-                    queryResults = (data.Items || []).filter(
-                        (item) => item.Version >= start && item.Version <= end
+                if (!Version) {
+                    // Query by Name only
+                    const params = {
+                        TableName: "Packages",
+                    };
+                    const data = await dynamoDB.scan(params).promise();
+                    queryResults = data.Items.filter((item) =>
+                        item.PackageID.startsWith(`${Name}-`)
                     );
                 } else {
+                    // Handle version ranges
+                    const { start, end } = parseVersionRange(Version);
+
+                    const params = {
+                        TableName: "Packages",
+                        FilterExpression: "#name = :name AND #version BETWEEN :start AND :end",
+                        ExpressionAttributeNames: {
+                            "#name": "Name",
+                            "#version": "Version",
+                        },
+                        ExpressionAttributeValues: {
+                            ":name": Name,
+                            ":start": start,
+                            ":end": end,
+                        },
+                    };
+                    const data = await dynamoDB.scan(params).promise(); // Use scan for version range queries
                     queryResults = data.Items || [];
                 }
-            } else if (!Version) {
-                // Query by Name only
-                const params = { TableName: "Packages" };
-                const data = await dynamoDB.scan(params).promise();
-                queryResults = (data.Items || []).filter((item) => {
-                    const extractedName = extractNameFromPackageID(item.PackageID);
-                    return extractedName === Name;
-                });
-            } else {
-                // Handle version ranges for specific Name
-                const { start, end } = parseVersionRange(Version);
-
-                const params = {
-                    TableName: "Packages",
-                    FilterExpression: "begins_with(#packageID, :name) AND #version BETWEEN :start AND :end",
-                    ExpressionAttributeNames: {
-                        "#packageID": "PackageID",
-                        "#version": "Version",
-                    },
-                    ExpressionAttributeValues: {
-                        ":name": `${Name}-`,
-                        ":start": start,
-                        ":end": end,
-                    },
-                };
-                const data = await dynamoDB.scan(params).promise();
-                queryResults = data.Items || [];
             }
 
             // Filter duplicates and maintain query order
@@ -108,12 +108,21 @@ exports.handler = async (event) => {
                     seenPackageIDs.add(item.PackageID);
                     results.push({
                         Version: item.Version,
-                        Name: extractNameFromPackageID(item.PackageID),
+                        Name: item.PackageID.replace(/-\d+\.\d+\.\d+$/, ""), // Extract Name from PackageID
                         ID: item.ID,
                         PackageID: item.PackageID,
                     });
                 }
             });
+        }
+
+        // Check if results exceed the limit
+        if (results.length > MAX_PACKAGE_COUNT) {
+            return {
+                statusCode: 413,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ error: "Too many packages returned. Refine your query." }),
+            };
         }
 
         return {
