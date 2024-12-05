@@ -11,32 +11,21 @@ exports.handler = async (event) => {
   if (!Name || !Version || !JSProgram) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "Missing required fields: Name, Version, or JSProgram" }, null, 2),
+      body: JSON.stringify({ error: "Missing required fields: Name, Version, or JSProgram" })
     };
   }
 
   if (URL && Content) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        { error: "Both URL and Content cannot be provided at the same time. Provide only one." },
-        null,
-        2
-      ),
+      body: JSON.stringify({ error: "Both URL and Content cannot be provided at the same time. Provide only one." })
     };
   }
 
   if (!URL && !Content) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        { error: "Either URL or Content must be provided" },
-        null,
-        2
-      ),
+      body: JSON.stringify({ error: "Either URL or Content must be provided" })
     };
   }
 
@@ -47,7 +36,7 @@ exports.handler = async (event) => {
   let metadata = {
     Name,
     Version,
-    ID: PackageID.toLowerCase(),
+    ID: PackageID.toLowerCase()
   };
 
   try {
@@ -56,87 +45,52 @@ exports.handler = async (event) => {
     if (exists) {
       return {
         statusCode: 409,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          { error: "Package exists already." },
-          null,
-          2
-        ),
+        body: JSON.stringify({
+          error: "Package exists already."
+        })
       };
     }
 
     // Proceed with processing URL or Content
     if (URL) {
-      if (!URL.includes('github.com') && !URL.includes('npmjs.com')) {
+      if (URL && !URL.includes('github.com') && !URL.includes('npmjs.com')) {
         return {
           statusCode: 400,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            { error: "URL must be a valid GitHub or npmjs.com link" },
-            null,
-            2
-          ),
+          body: JSON.stringify({ error: "URL must be a valid GitHub or npmjs.com link" })
         };
       }
-
       const githubToken = await getSecret('GITHUB_TOKEN_2');
       const { base64Content, s3Response } = await processURLToS3(URL, githubToken, s3BucketName, s3Key);
-
-      await updateDynamoDB(PackageID, Version, metadata, s3Key, URL);
-
+      await updateDynamoDB(PackageID, Version, metadata, s3Key, URL); // Include URL
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          {
-            metadata,
-            data: {
-              URL,
-              Content: base64Content,
-              JSProgram,
-            },
-          },
-          null,
-          2
-        ),
+        body: JSON.stringify({
+          metadata,
+          data: { URL, Content: base64Content, JSProgram }
+        })
       };
     } else if (Content) {
       const contentBuffer = Buffer.from(Content, 'base64');
       await uploadContentToS3(contentBuffer, s3BucketName, s3Key);
-      await updateDynamoDB(PackageID, Version, metadata, s3Key);
-
+      await updateDynamoDB(PackageID, Version, metadata, s3Key); // No URL provided
       return {
         statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          {
-            metadata,
-            data: {
-              Content,
-              JSProgram,
-            },
-          },
-          null,
-          2
-        ),
+        body: JSON.stringify({
+          metadata,
+          data: { Content, JSProgram }
+        })
       };
     }
   } catch (error) {
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        {
-          error: "Failed to process package",
-          details: error.message,
-        },
-        null,
-        2
-      ),
+      body: JSON.stringify({
+        error: "Failed to process package",
+        details: error.message
+      })
     };
   }
 };
-
 
 // Helper function to process URL, download the content, and upload it to S3
 async function processURLToS3(link, githubToken, s3BucketName, s3Key) {
