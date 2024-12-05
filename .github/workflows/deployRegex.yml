@@ -1,9 +1,9 @@
-name: Deploy Update Function
+name: Deploy Regex Function
 
 on:
   push:
     paths:
-      - "lambda/updateHandler/**"
+      - "lambda/regexHandler/**"
     branches: [main]
     
 jobs:
@@ -21,7 +21,7 @@ jobs:
       # Step 3: Create a zip file containing the Lambda function code
       - name: Create Zip file for Lambda function
         run: |
-          cd lambda/updateHandler
+          cd lambda/regexHandler
           zip -r ../../code.zip .
 
       # # Step 4: Debugging: Check current directory and zip file
@@ -44,5 +44,5 @@ jobs:
       - name: Deploy Lambda function
         run: |
           aws lambda update-function-code \
-            --function-name arn:aws:lambda:us-east-2:209479299089:function:updateHandler \
+            --function-name arn:aws:lambda:us-east-2:209479299089:function:regexHandler \
             --zip-file fileb://code.zip
