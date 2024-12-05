@@ -8,15 +8,15 @@
 
 <body>
     <h1> Upload Page </h1>
-    <form action="/upload" method="post" enctype="multipart/form-data"> 
+    <form action="https://7bbav0i1xd.execute-api.us-east-2.amazonaws.com/dev" method="post" enctype="multipart/form-data"> 
         <label for="name">File Name:</label> 
         <input type="text" id="name" name="name" required><br><br>
 
         <label for="version">Version:</label> 
         <input type="text" id="version" name="version" required><br><br>
         
-        <label for="file-upload">Choose a file:</label> 
-        <input type="file" id="file-upload" name="file"> 
+        <label for="content">Choose a file:</label> 
+        <input type="file" id="content" name="content"> 
         <br><br> 
         
         <input type="submit" value="Upload"> 
@@ -30,7 +30,8 @@
             
             try { 
                 const response = await fetch(form.action, { 
-                    method: 'POST', body: formData 
+                    method: 'POST', 
+                    body: formData 
             }); 
                     
             const result = await response.json(); 
