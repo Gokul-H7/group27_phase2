@@ -1,7 +1,81 @@
 <head>
-    <title>Placeholder</title>
+    <title>ACME Module Repository</title>
+    <meta charset="UTF-8"> 
+    <meta name="description" content="Free Web tutorials"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style> 
+        body { 
+            font-family: Arial, sans-serif; 
+        } 
+
+        .linkButton { display: inline-block; 
+            padding: 10px 20px; 
+            font-size: 16px; 
+            width: 100px;
+            cursor: pointer; 
+            text-align: center; 
+            text-decoration: none; 
+            outline: none; 
+            color: #fff; 
+            background-color: #c1cac2; 
+            border: none; 
+            border-radius: 5px; 
+            box-shadow: 0 4px #999; 
+        } 
+        
+        .linkButton:hover {
+            background-color: #45a049
+        } 
+        
+        .linkButton:active { background-color: #3e8e41; 
+            box-shadow: 0 5px #666; 
+            transform: translateY(4px); 
+        }
+
+        #uploadButton{
+            position: absolute;
+            top: 50px;
+            left: 50px;
+        }
+
+        #downloadButton{
+            position: absolute;
+            top: 50px;
+            left: 220px;
+        }
+
+        .container { 
+            position: relative; 
+            width: 450px; height: 200px; 
+            background-color: lightblue; 
+        } 
+        
+        .overlay { 
+            position: absolute; 
+            top: 50px; 
+            left: 50px; 
+            width: 200px; 
+            height: 100px; 
+            background-color: rgba(255, 0, 0, 0.5); 
+            z-index: 10; 
+        } 
+        
+        .content { 
+            position: absolute; 
+            top: 100px; 
+            left: 100px; 
+            width: 150px; 
+            height: 50px; 
+            background-color: rgba(0, 255, 0, 0.5); 
+            z-index: 5; }
+    </style>
 </head>
 <body>
-    <h1>placeholder test</h1>
+    <h1>ACME Module Repository</h1>
+    <div class="container"> 
+        <h3>Please select which action you'd like to take</h3>
+        <a href = "https://acme-website-27.s3.us-east-2.amazonaws.com/upload.html" class = "linkButton" id="uploadButton">Upload</a>
+        <a href = "https://acme-website-27.s3.us-east-2.amazonaws.com/download.html" class = "linkButton" id="downloadButton">Download</a>
+    </div>
 </body>
 </html>
