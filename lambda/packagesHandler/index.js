@@ -30,6 +30,11 @@ const parseVersionRange = (version) => {
     return { start: version, end: version };
 };
 
+// Helper function to extract Name from PackageID
+const extractNameFromPackageID = (packageID) => {
+    return packageID.replace(/-\d+\.\d+\.\d+$/, "");
+};
+
 exports.handler = async (event) => {
     try {
         console.log("Event received:", JSON.stringify(event, null, 2));
@@ -61,45 +66,35 @@ exports.handler = async (event) => {
             }
 
             let queryResults = [];
-            if (query.Name === "*") {
-                // Wildcard query: retrieve all packages
+            const { Name, Version } = query;
+
+            if (!Version) {
+                // Query by Name only
                 const params = { TableName: "Packages" };
                 const data = await dynamoDB.scan(params).promise();
-                queryResults = data.Items || [];
+                queryResults = (data.Items || []).filter((item) => {
+                    const extractedName = extractNameFromPackageID(item.PackageID);
+                    return extractedName === Name;
+                });
             } else {
-                const { Name, Version } = query;
+                // Handle version ranges
+                const { start, end } = parseVersionRange(Version);
 
-                if (!Version) {
-                    // Query by Name only
-                    const params = {
-                        TableName: "Packages",
-                        IndexName: "NameIndex", // Assume a secondary index on Name
-                        KeyConditionExpression: "#name = :name",
-                        ExpressionAttributeNames: { "#name": "Name" },
-                        ExpressionAttributeValues: { ":name": Name },
-                    };
-                    const data = await dynamoDB.query(params).promise();
-                    queryResults = data.Items || [];
-                } else {
-                    // Handle version ranges
-                    const { start, end } = parseVersionRange(Version);
-
-                    const params = {
-                        TableName: "Packages",
-                        FilterExpression: "#name = :name AND #version BETWEEN :start AND :end",
-                        ExpressionAttributeNames: {
-                            "#name": "Name",
-                            "#version": "Version",
-                        },
-                        ExpressionAttributeValues: {
-                            ":name": Name,
-                            ":start": start,
-                            ":end": end,
-                        },
-                    };
-                    const data = await dynamoDB.scan(params).promise(); // Use scan for version range queries
-                    queryResults = data.Items || [];
-                }
+                const params = {
+                    TableName: "Packages",
+                    FilterExpression: "begins_with(#packageID, :name) AND #version BETWEEN :start AND :end",
+                    ExpressionAttributeNames: {
+                        "#packageID": "PackageID",
+                        "#version": "Version",
+                    },
+                    ExpressionAttributeValues: {
+                        ":name": `${Name}-`,
+                        ":start": start,
+                        ":end": end,
+                    },
+                };
+                const data = await dynamoDB.scan(params).promise();
+                queryResults = data.Items || [];
             }
 
             // Filter duplicates and maintain query order
@@ -108,7 +103,7 @@ exports.handler = async (event) => {
                     seenPackageIDs.add(item.PackageID);
                     results.push({
                         Version: item.Version,
-                        Name: item.Name,
+                        Name: extractNameFromPackageID(item.PackageID),
                         ID: item.ID,
                         PackageID: item.PackageID,
                     });
