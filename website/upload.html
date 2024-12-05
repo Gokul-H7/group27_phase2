@@ -37,7 +37,7 @@
         document.getElementById('upload-form').addEventListener('submit', async function(event) 
         { event.preventDefault(); 
             //const form = event.target; 
-            const formData = new FormData(form); 
+            const formData = new FormData(event.target); 
             
             const data = { 
                 Name: formData.get('name'), 
