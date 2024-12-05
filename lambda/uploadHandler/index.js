@@ -1,5 +1,7 @@
 const AWS = require('aws-sdk');
 const https = require('https');
+const AdmZip = require('adm-zip');
+const terser = require('terser');
 const s3 = new AWS.S3();
 const secretsManager = new AWS.SecretsManager();
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
@@ -115,7 +117,12 @@ exports.handler = async (event) => {
         ),
       };
     } else if (Content) {
-      const contentBuffer = Buffer.from(Content, 'base64');
+      let contentBuffer = Buffer.from(Content, 'base64');
+
+      if (debloat) {
+        contentBuffer = await debloatContent(contentBuffer); // Apply debloating if requested
+      }
+
       await uploadContentToS3(contentBuffer, s3BucketName, s3Key);
       await updateDynamoDB(PackageID, Version, metadata, s3Key);
 
@@ -151,7 +158,31 @@ exports.handler = async (event) => {
   }
 };
 
+// Helper function for debloating
+async function debloatContent(contentBuffer) {
+  const zip = new AdmZip(contentBuffer);
+  const newZip = new AdmZip();
 
+  // Iterate through the files in the ZIP
+  zip.getEntries().forEach((entry) => {
+    if (entry.isDirectory) {
+      // Retain directories as is
+      newZip.addFile(entry.entryName, Buffer.alloc(0), entry.comment);
+    } else if (entry.entryName.endsWith(".js")) {
+      // Minify JavaScript files using terser
+      const originalCode = zip.readAsText(entry);
+      const minifiedCode = terser.minify(originalCode).code || originalCode; // Fallback to original code if minification fails
+      newZip.addFile(entry.entryName, Buffer.from(minifiedCode), entry.comment);
+    } else if (entry.entryName.match(/\.json$|\.css$/)) {
+      // Retain JSON and CSS files
+      const fileContent = zip.readFile(entry);
+      newZip.addFile(entry.entryName, fileContent, entry.comment);
+    }
+    // Other file types are excluded (e.g., documentation, tests)
+  });
+
+  return newZip.toBuffer(); // Return the optimized ZIP as a buffer
+}
 
 // Helper function to process URL, download the content, and upload it to S3
 async function processURLToS3(link, githubToken, s3BucketName, s3Key) {
