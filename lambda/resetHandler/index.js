@@ -3,12 +3,13 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const s3 = new AWS.S3();
 
 exports.handler = async (event) => {
+    console.log("Reset endpoint called.");
+    console.log("Event received:", JSON.stringify(event, null, 2));
+
+    const tableName = "Packages";
+    const bucketName = "packages-registry-27";
+
     try {
-        console.log("Reset endpoint called.");
-
-        const tableName = "Packages"; 
-        const bucketName = "packages-registry-27"; 
-
         // Scan the DynamoDB table to retrieve all items
         const scanParams = { TableName: tableName };
         const itemsToDelete = [];
@@ -60,18 +61,24 @@ exports.handler = async (event) => {
             }
         }
 
+        // Return successful response
         return {
             statusCode: 200,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: "Registry reset to default state." }),
+            body: JSON.stringify({ message: "Registry reset to default state." }, null, 2),
         };
     } catch (error) {
         console.error("Error during reset operation:", error);
 
+        // Return error response
         return {
             statusCode: 500,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ error: error.message || "An unknown error occurred." }),
+            body: JSON.stringify(
+                { error: error.message || "An unknown error occurred." },
+                null,
+                2
+            ),
         };
     }
 };
