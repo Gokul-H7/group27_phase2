@@ -57,18 +57,23 @@ exports.handler = async (event) => {
         let seenPackageIDs = new Set(); // Track processed PackageIDs to avoid duplicates
 
         for (const query of queryArray) {
-            if (!query.Name) {
-                return {
-                    statusCode: 400,
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ error: "Each query must have a 'Name' field." }),
-                };
-            }
-
-            let queryResults = [];
             const { Name, Version } = query;
 
-            if (!Version) {
+            let queryResults = [];
+            if (Name === "*") {
+                // Wildcard query: retrieve all packages
+                const params = { TableName: "Packages" };
+                const data = await dynamoDB.scan(params).promise();
+
+                if (Version) {
+                    const { start, end } = parseVersionRange(Version);
+                    queryResults = (data.Items || []).filter(
+                        (item) => item.Version >= start && item.Version <= end
+                    );
+                } else {
+                    queryResults = data.Items || [];
+                }
+            } else if (!Version) {
                 // Query by Name only
                 const params = { TableName: "Packages" };
                 const data = await dynamoDB.scan(params).promise();
@@ -77,7 +82,7 @@ exports.handler = async (event) => {
                     return extractedName === Name;
                 });
             } else {
-                // Handle version ranges
+                // Handle version ranges for specific Name
                 const { start, end } = parseVersionRange(Version);
 
                 const params = {
