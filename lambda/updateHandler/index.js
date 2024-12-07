@@ -39,8 +39,11 @@ exports.handler = async (event) => {
   }
 
   try {
+    // Fetch the latest version if not provided
+    const currentVersion = newVersion || (await getLatestVersion(id));
+
     // Fetch existing package information
-    const existingPackage = await getPackageById(id);
+    const existingPackage = await getPackageById(id, currentVersion);
     if (!existingPackage) {
       return {
         statusCode: 404,
@@ -51,11 +54,8 @@ exports.handler = async (event) => {
 
     const finalName = newName || existingPackage.Metadata.Name;
 
-    // Fetch all versions of the package
-    const allVersions = await getAllVersions(finalName);
-
     // Validate the provided version number
-    if (newVersion && !isValidNewVersion(newVersion, allVersions)) {
+    if (newVersion && !isValidNewVersion(newVersion, id)) {
       return {
         statusCode: 400,
         headers: { "Content-Type": "application/json" },
@@ -64,9 +64,6 @@ exports.handler = async (event) => {
         }),
       };
     }
-
-    // Determine the final version
-    const finalVersion = newVersion || (await getNextVersion(finalName, allVersions));
 
     // Determine the final URL and Content
     const finalURL = URL || existingPackage.Metadata.URL;
@@ -83,7 +80,7 @@ exports.handler = async (event) => {
     // Prepare the upload request body
     const uploadRequestBody = {
       Name: finalName,
-      Version: finalVersion,
+      Version: newVersion || currentVersion,
       JSProgram,
     };
     if (finalURL) uploadRequestBody.URL = finalURL;
@@ -107,45 +104,69 @@ exports.handler = async (event) => {
   }
 };
 
-// Helper function to fetch all versions of a package
-async function getAllVersions(Name) {
+// Fetch a package by ID and Version
+async function getPackageById(id, version) {
   const params = {
     TableName: 'Packages',
-    FilterExpression: "#name = :name",
-    ExpressionAttributeNames: { "#name": "Name" },
-    ExpressionAttributeValues: { ":name": Name },
+    Key: {
+      PackageID: id,
+      Version: version,
+    },
   };
 
-  const data = await dynamoDB.scan(params).promise();
-  return data.Items ? data.Items.map((item) => item.Version) : [];
+  try {
+    const result = await dynamoDB.get(params).promise();
+    return result.Item || null;
+  } catch (error) {
+    console.error('DynamoDB Error:', error);
+    throw new Error('Failed to fetch package from DynamoDB');
+  }
 }
 
-// Helper function to validate the provided version against existing versions
-function isValidNewVersion(newVersion, allVersions) {
-  const [newMajor, newMinor, newPatch] = newVersion.split('.').map(Number);
+// Fetch the latest version of a package
+async function getLatestVersion(id) {
+  const params = {
+    TableName: 'Packages',
+    KeyConditionExpression: 'PackageID = :packageID',
+    ExpressionAttributeValues: { ':packageID': id },
+  };
 
-  // Filter versions by the same major and minor
-  const sameMajorMinorVersions = allVersions.filter((version) => {
-    const [major, minor] = version.split('.').map(Number);
-    return major === newMajor && minor === newMinor;
-  });
-
-  // Check if the new patch is greater within the same major/minor
-  if (sameMajorMinorVersions.length > 0) {
-    const latestPatch = Math.max(...sameMajorMinorVersions.map((version) => {
-      const [, , patch] = version.split('.').map(Number);
-      return patch;
-    }));
-    if (newPatch <= latestPatch) {
-      return false; // Older or same patch version is invalid
-    }
+  const data = await dynamoDB.query(params).promise();
+  if (!data.Items || data.Items.length === 0) {
+    throw new Error('No versions found for the specified package');
   }
 
-  // Allow any major or minor update
-  return true;
+  // Sort by version and return the latest
+  const sortedVersions = data.Items.map((item) => item.Version).sort((a, b) => {
+    const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
+    const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
+
+    if (aMajor !== bMajor) return bMajor - aMajor;
+    if (aMinor !== bMinor) return bMinor - aMinor;
+    return bPatch - aPatch;
+  });
+
+  return sortedVersions[0];
 }
 
-// Helper function to send the upload request
+// Validate new version against the current package
+function isValidNewVersion(newVersion, id) {
+  const [newMajor, newMinor, newPatch] = newVersion.split('.').map(Number);
+  const latestVersion = getLatestVersion(id).split('.').map(Number);
+
+  // Allow any major or minor update
+  if (newMajor > latestVersion[0]) return true;
+  if (newMajor === latestVersion[0] && newMinor > latestVersion[1]) return true;
+
+  // Allow only newer patches within the same major/minor
+  if (newMajor === latestVersion[0] && newMinor === latestVersion[1]) {
+    return newPatch > latestVersion[2];
+  }
+
+  return false;
+}
+
+// Send the upload request
 async function sendUploadRequest(uploadRequestBody) {
   const options = {
     hostname: new URL(apiBaseURL).hostname,
@@ -172,15 +193,4 @@ async function sendUploadRequest(uploadRequestBody) {
     req.write(JSON.stringify(uploadRequestBody));
     req.end();
   });
-}
-
-// Helper function to fetch a package by ID
-async function getPackageById(id) {
-  const params = {
-    TableName: 'Packages',
-    Key: { PackageID: id },
-  };
-
-  const result = await dynamoDB.get(params).promise();
-  return result.Item || null;
 }
