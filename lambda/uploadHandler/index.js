@@ -188,16 +188,10 @@ async function getNextVersion(Name) {
     return bPatch - aPatch;
   });
 
-  // Calculate the next version with rollover
+  // Calculate the next version
   const [major, minor, patch] = versions[0].split(".").map(Number);
 
-  if (patch < 9) {
-    return `${major}.${minor}.${patch + 1}`;
-  } else if (minor < 9) {
-    return `${major}.${minor + 1}.0`;
-  } else {
-    return `${major + 1}.0.0`;
-  }
+  return `${major}.${minor}.${patch + 1}`;
 }
 
 // Helper function for debloating
