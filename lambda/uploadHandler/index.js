@@ -119,8 +119,8 @@ exports.handler = async (event) => {
           {
             metadata: { Name, Version, ID: PackageID },
             data: {
-              URL,
               Content: base64Content,
+              URL,
               JSProgram,
             },
           },
