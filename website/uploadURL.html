@@ -16,9 +16,42 @@
         
         <label for="URL">URL to Module</label>
         <input type = "text" id = "URL" name = "URL" required><br><br>
-        
+
         <input type = "hidden" id = "JSProgram" name = "JSProgram" 
         value = "if (process.argv.length === 7) {\nconsole.log('Success')\nprocess.exit(0)\n} else {\nconsole.log('Failed')\nprocess.exit(1)\n}\n"> <br><br>
 
+        <input type="submit" value="Upload">
+
+
+        <script> 
+            document.getElementById('upload-form').addEventListener('submit', async function(event) 
+            { event.preventDefault(); 
+                //const form = event.target; 
+                const formData = new FormData(event.target); 
+                
+                const data = { 
+                    Name: formData.get('Name'), 
+                    Version: formData.get('version'), 
+                    URL: formData.get('URL'), 
+                    JSProgram: formData.get('JSProgram'), 
+                    debloat: formData.has('debloat'), // Boolean value based on checkbox state 
+                    // URL: formData.get('URL')
+                };
+    
+                try { 
+                    const response = await fetch(event.target.action, { 
+                        method: 'POST', 
+                        headers: { 
+                            'Content-Type': 'application/json' 
+                        },
+                        body: JSON.stringify(data) // Convert JSON object to string
+                }); 
+                        
+                const result = await response.json(); 
+                console.log('Success:', result); 
+            } catch (error) { 
+                console.error('Error:', error); } 
+            });
+        </script>
     </form>
 </body>
