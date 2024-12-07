@@ -29,7 +29,7 @@ exports.handler = async (event) => {
   const { Name: newName, Version: newVersion } = metadata;
   const { Content, URL, debloat, JSProgram } = data;
 
-  // Ensure only one of URL or Content is provided
+  // Ensure only one of URL or Content is provided in the input
   if (URL && Content) {
     return {
       statusCode: 400,
@@ -40,8 +40,8 @@ exports.handler = async (event) => {
 
   try {
     // Check if the package exists
-    const packageExists = await doesPackageExist(id);
-    if (!packageExists) {
+    const existingPackage = await doesPackageExist(id);
+    if (!existingPackage) {
       return {
         statusCode: 404,
         headers: { "Content-Type": "application/json" },
@@ -49,12 +49,12 @@ exports.handler = async (event) => {
       };
     }
 
-    // Validate or fetch the latest version
-    const finalVersion = newVersion || (await getNextVersion(id));
+    const finalName = newName || existingPackage.Metadata.Name;
 
     // Determine the final URL and Content
-    const finalURL = URL || packageExists.Metadata.URL;
-    const finalContent = Content || packageExists.Metadata.Content;
+    // Prioritize the input values, fallback to existing package values if neither is provided
+    const finalURL = URL || (Content ? null : existingPackage.Metadata.URL);
+    const finalContent = Content || (URL ? null : existingPackage.Metadata.Content);
 
     if (!finalURL && !finalContent) {
       return {
@@ -66,8 +66,8 @@ exports.handler = async (event) => {
 
     // Prepare the upload request body
     const uploadRequestBody = {
-      Name: newName || packageExists.Metadata.Name,
-      Version: finalVersion,
+      Name: finalName,
+      Version: newVersion,
       JSProgram,
     };
     if (finalURL) uploadRequestBody.URL = finalURL;
@@ -90,6 +90,7 @@ exports.handler = async (event) => {
     };
   }
 };
+
 
 // Check if the package exists (without requiring Version)
 async function doesPackageExist(id) {
