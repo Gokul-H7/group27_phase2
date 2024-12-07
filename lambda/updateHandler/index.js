@@ -39,12 +39,9 @@ exports.handler = async (event) => {
   }
 
   try {
-    // Fetch the latest version if not provided
-    const currentVersion = newVersion || (await getLatestVersion(id));
-
-    // Fetch existing package information
-    const existingPackage = await getPackageById(id, currentVersion);
-    if (!existingPackage) {
+    // Check if the package exists
+    const packageExists = await doesPackageExist(id);
+    if (!packageExists) {
       return {
         statusCode: 404,
         headers: { "Content-Type": "application/json" },
@@ -52,22 +49,12 @@ exports.handler = async (event) => {
       };
     }
 
-    const finalName = newName || existingPackage.Metadata.Name;
-
-    // Validate the provided version number
-    if (newVersion && !isValidNewVersion(newVersion, id)) {
-      return {
-        statusCode: 400,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          error: `Provided version (${newVersion}) is invalid. Older patch versions are not allowed.`,
-        }),
-      };
-    }
+    // Validate or fetch the latest version
+    const finalVersion = newVersion || (await getNextVersion(id));
 
     // Determine the final URL and Content
-    const finalURL = URL || existingPackage.Metadata.URL;
-    const finalContent = Content || existingPackage.Metadata.Content;
+    const finalURL = URL || packageExists.Metadata.URL;
+    const finalContent = Content || packageExists.Metadata.Content;
 
     if (!finalURL && !finalContent) {
       return {
@@ -79,8 +66,8 @@ exports.handler = async (event) => {
 
     // Prepare the upload request body
     const uploadRequestBody = {
-      Name: finalName,
-      Version: newVersion || currentVersion,
+      Name: newName || packageExists.Metadata.Name,
+      Version: finalVersion,
       JSProgram,
     };
     if (finalURL) uploadRequestBody.URL = finalURL;
@@ -104,27 +91,25 @@ exports.handler = async (event) => {
   }
 };
 
-// Fetch a package by ID and Version
-async function getPackageById(id, version) {
+// Check if the package exists (without requiring Version)
+async function doesPackageExist(id) {
   const params = {
     TableName: 'Packages',
-    Key: {
-      PackageID: id,
-      Version: version,
-    },
+    KeyConditionExpression: 'PackageID = :packageID',
+    ExpressionAttributeValues: { ':packageID': id },
   };
 
   try {
-    const result = await dynamoDB.get(params).promise();
-    return result.Item || null;
+    const result = await dynamoDB.query(params).promise();
+    return result.Items && result.Items.length > 0 ? result.Items[0] : null;
   } catch (error) {
     console.error('DynamoDB Error:', error);
     throw new Error('Failed to fetch package from DynamoDB');
   }
 }
 
-// Fetch the latest version of a package
-async function getLatestVersion(id) {
+// Fetch the next version of a package
+async function getNextVersion(id) {
   const params = {
     TableName: 'Packages',
     KeyConditionExpression: 'PackageID = :packageID',
@@ -133,11 +118,11 @@ async function getLatestVersion(id) {
 
   const data = await dynamoDB.query(params).promise();
   if (!data.Items || data.Items.length === 0) {
-    throw new Error('No versions found for the specified package');
+    return "1.0.0"; // Default version if no versions exist
   }
 
-  // Sort by version and return the latest
-  const sortedVersions = data.Items.map((item) => item.Version).sort((a, b) => {
+  // Sort versions numerically
+  const versions = data.Items.map((item) => item.Version).sort((a, b) => {
     const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
     const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
 
@@ -146,25 +131,13 @@ async function getLatestVersion(id) {
     return bPatch - aPatch;
   });
 
-  return sortedVersions[0];
+  // Extract the latest version
+  const [major, minor, patch] = versions[0].split('.').map(Number);
+
+  // Increment the patch version
+  return `${major}.${minor}.${patch + 1}`;
 }
 
-// Validate new version against the current package
-function isValidNewVersion(newVersion, id) {
-  const [newMajor, newMinor, newPatch] = newVersion.split('.').map(Number);
-  const latestVersion = getLatestVersion(id).split('.').map(Number);
-
-  // Allow any major or minor update
-  if (newMajor > latestVersion[0]) return true;
-  if (newMajor === latestVersion[0] && newMinor > latestVersion[1]) return true;
-
-  // Allow only newer patches within the same major/minor
-  if (newMajor === latestVersion[0] && newMinor === latestVersion[1]) {
-    return newPatch > latestVersion[2];
-  }
-
-  return false;
-}
 
 // Send the upload request
 async function sendUploadRequest(uploadRequestBody) {
