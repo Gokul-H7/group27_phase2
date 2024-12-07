@@ -66,20 +66,20 @@
             document.getElementById('display-jsprogram').textContent = data.JSProgram;
             document.getElementById('display-debloat').textContent = `Debloat: ${data.debloat ? 'Yes' : 'No'}`;
 
-            try { 
-                const response = await fetch(form.action, { 
-                    method: 'POST', 
-                    headers: { 
-                        'Content-Type': 'application/json' 
-                    },
-                    body: JSON.stringify(data) // Convert JSON object to string
-            }); 
+        //     try { 
+        //         const response = await fetch(form.action, { 
+        //             method: 'POST', 
+        //             headers: { 
+        //                 'Content-Type': 'application/json' 
+        //             },
+        //             body: JSON.stringify(data) // Convert JSON object to string
+        //     }); 
                     
-            const result = await response.json(); 
-            console.log('Success:', result); 
-        } catch (error) { 
-            console.error('Error:', error); } 
-        });
+        //     const result = await response.json(); 
+        //     console.log('Success:', result); 
+        // } catch (error) { 
+        //     console.error('Error:', error); } 
+        // });
     </script>
 </body>
 </html>
