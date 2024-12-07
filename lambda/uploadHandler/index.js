@@ -21,14 +21,15 @@ exports.handler = async (event) => {
   }
 
   // Extract parameters from the parsed body
-  const { Name, Version, URL, Content, JSProgram, debloat = false } = body;
+  const { Name, URL, Content, JSProgram, debloat = false } = body;
+  let { Version } = body;
 
   // Validate mandatory inputs
-  if (!Name || !Version || !JSProgram) {
+  if (!Name || !JSProgram) {
     return {
       statusCode: 400,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "Missing required fields: Name, Version, or JSProgram" }, null, 2),
+      body: JSON.stringify({ error: "Missing required fields: Name or JSProgram" }, null, 2),
     };
   }
 
@@ -56,17 +57,33 @@ exports.handler = async (event) => {
     };
   }
 
-  const PackageID = `${Name}-${Version}`;
-  const s3BucketName = 'packages-registry-27';
-  const s3Key = `${Name}/${Version}/${PackageID}.zip`;
-
-  let metadata = {
-    Name,
-    Version,
-    ID: PackageID.toLowerCase(),
-  };
-
   try {
+    // If Version is not provided, fetch the latest version from DynamoDB
+    if (!Version) {
+      Version = await getLatestVersion(Name);
+      if (!Version) {
+        return {
+          statusCode: 400,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            { error: "No existing versions found for the provided Name. Please specify a Version." },
+            null,
+            2
+          ),
+        };
+      }
+    }
+
+    const PackageID = `${Name}-${Version}`;
+    const s3BucketName = 'packages-registry-27';
+    const s3Key = `${Name}/${Version}/${PackageID}.zip`;
+
+    let metadata = {
+      Name,
+      Version,
+      ID: PackageID.toLowerCase(),
+    };
+
     // Check if the package already exists in DynamoDB
     const exists = await checkPackageExists(PackageID, Version);
     if (exists) {
@@ -157,6 +174,34 @@ exports.handler = async (event) => {
     };
   }
 };
+
+// Helper function to get the latest version from DynamoDB
+async function getLatestVersion(Name) {
+  const params = {
+    TableName: "Packages",
+    FilterExpression: "#name = :name",
+    ExpressionAttributeNames: { "#name": "Name" },
+    ExpressionAttributeValues: { ":name": Name },
+  };
+
+  const data = await dynamoDB.scan(params).promise();
+  if (!data.Items || data.Items.length === 0) {
+    return null;
+  }
+
+  // Extract and sort the versions
+  const versions = data.Items.map((item) => item.Version).sort((a, b) => {
+    const [aMajor, aMinor, aPatch] = a.split(".").map(Number);
+    const [bMajor, bMinor, bPatch] = b.split(".").map(Number);
+
+    if (aMajor !== bMajor) return bMajor - aMajor;
+    if (aMinor !== bMinor) return bMinor - aMinor;
+    return bPatch - aPatch;
+  });
+
+  return versions[0]; // Return the latest version
+}
+
 
 // Helper function for debloating
 async function debloatContent(contentBuffer) {
