@@ -21,15 +21,19 @@ exports.handler = async (event) => {
   }
 
   // Extract parameters from the parsed body
-  const { Name, URL, Content, JSProgram, debloat = false } = body;
+  let { Name, URL, Content, JSProgram, debloat = false } = body;
   let { Version } = body;
 
   // Validate mandatory inputs
-  if (!Name || !JSProgram) {
+  if (!URL && !Content) {
     return {
       statusCode: 400,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "Missing required fields: Name or JSProgram" }, null, 2),
+      body: JSON.stringify(
+        { error: "Either URL or Content must be provided" },
+        null,
+        2
+      ),
     };
   }
 
@@ -45,19 +49,21 @@ exports.handler = async (event) => {
     };
   }
 
-  if (!URL && !Content) {
-    return {
-      statusCode: 400,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        { error: "Either URL or Content must be provided" },
-        null,
-        2
-      ),
-    };
-  }
-
   try {
+    // Derive the name from the URL if not provided
+    if (!Name && URL) {
+      Name = await extractNameFromURL(URL);
+    }
+
+    // Validate mandatory inputs again
+    if (!Name) {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: "Missing required fields: Name" }, null, 2),
+      };
+    }
+
     // Determine version if not provided
     if (!Version) {
       Version = await getNextVersion(Name);
@@ -163,6 +169,21 @@ exports.handler = async (event) => {
     };
   }
 };
+
+// Helper function to extract name from URL
+async function extractNameFromURL(URL) {
+  if (URL.includes('github.com')) {
+    const repoNameMatch = URL.match(/github\.com\/([^\/]+\/[^\/]+)(\/|$)/);
+    if (!repoNameMatch) throw new Error("Invalid GitHub URL format");
+    return repoNameMatch[1].split('/')[1]; // Extract the repository name
+  } else if (URL.includes('npmjs.com')) {
+    const githubLink = await fetchGithubLinkFromNpm(URL);
+    return extractNameFromURL(githubLink); // Recursively extract the name from the GitHub link
+  } else {
+    throw new Error("Unsupported URL format for extracting name");
+  }
+}
+
 
 // Helper function to determine the next version
 async function getNextVersion(Name) {
