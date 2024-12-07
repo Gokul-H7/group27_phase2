@@ -35,11 +35,14 @@
         { event.preventDefault(); 
             //const form = event.target; 
             const formData = new FormData(event.target); 
-            
+            const file = formData.get('content');
+
+            base64File = await toBase64(file);
+
             const data = { 
                 Name: formData.get('Name'), 
                 Version: formData.get('version'), 
-                Content: formData.get('content'), 
+                Content: base64File, 
                 JSProgram: formData.get('JSProgram'), 
                 debloat: formData.has('debloat'), // Boolean value based on checkbox state 
                 // URL: formData.get('URL')
@@ -59,6 +62,16 @@
         } catch (error) { 
             console.error('Error:', error); } 
         });
+
+        function toBase64(file) { 
+            return new Promise((resolve, reject) => { 
+                const reader = new FileReader(); 
+                reader.readAsDataURL(file); 
+                reader.onload = () => resolve(reader.result); 
+                reader.onerror = error => reject(error); 
+            }); 
+        }
+
     </script>
 </body>
 </html>
