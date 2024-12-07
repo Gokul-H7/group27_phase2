@@ -113,7 +113,7 @@ exports.handler = async (event) => {
       await updateDynamoDB(PackageID, Version, metadata, s3Key, URL);
 
       return {
-        statusCode: 200,
+        statusCode: 201,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           {
@@ -139,7 +139,7 @@ exports.handler = async (event) => {
       await updateDynamoDB(PackageID, Version, metadata, s3Key);
 
       return {
-        statusCode: 200,
+        statusCode: 201,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           {
