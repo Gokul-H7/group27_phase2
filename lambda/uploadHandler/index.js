@@ -21,14 +21,15 @@ exports.handler = async (event) => {
   }
 
   // Extract parameters from the parsed body
-  const { Name, Version, URL, Content, JSProgram, debloat = false } = body;
+  const { Name, URL, Content, JSProgram, debloat = false } = body;
+  let { Version } = body;
 
   // Validate mandatory inputs
-  if (!Name || !Version || !JSProgram) {
+  if (!Name || !JSProgram) {
     return {
       statusCode: 400,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "Missing required fields: Name, Version, or JSProgram" }, null, 2),
+      body: JSON.stringify({ error: "Missing required fields: Name or JSProgram" }, null, 2),
     };
   }
 
@@ -56,25 +57,30 @@ exports.handler = async (event) => {
     };
   }
 
-  const PackageID = `${Name}-${Version}`;
-  const s3BucketName = 'packages-registry-27';
-  const s3Key = `${Name}/${Version}/${PackageID}.zip`;
-
-  let metadata = {
-    Name,
-    Version,
-    ID: PackageID.toLowerCase(),
-  };
-
   try {
-    // Check if the package already exists in DynamoDB
+    // Determine version if not provided
+    if (!Version) {
+      Version = await getNextVersion(Name);
+    }
+
+    const PackageID = `${Name}-${Version}`;
+    const s3BucketName = 'packages-registry-27';
+    const s3Key = `${Name}/${Version}/${PackageID}.zip`;
+
+    let metadata = {
+      Name,
+      Version,
+      ID: PackageID.toLowerCase(),
+    };
+
+    // Check if the package with the same PackageID already exists
     const exists = await checkPackageExists(PackageID, Version);
     if (exists) {
       return {
         statusCode: 409,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          { error: "Package exists already." },
+          { error: "Package already exists with the same Name and Version." },
           null,
           2
         ),
@@ -105,7 +111,7 @@ exports.handler = async (event) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           {
-            metadata,
+            metadata: { Name, Version, ID: PackageID },
             data: {
               URL,
               Content: base64Content,
@@ -131,7 +137,7 @@ exports.handler = async (event) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           {
-            metadata,
+            metadata: { Name, Version, ID: PackageID },
             data: {
               Content,
               JSProgram,
@@ -157,6 +163,42 @@ exports.handler = async (event) => {
     };
   }
 };
+
+// Helper function to determine the next version
+async function getNextVersion(Name) {
+  const params = {
+    TableName: "Packages",
+    FilterExpression: "#name = :name",
+    ExpressionAttributeNames: { "#name": "Name" },
+    ExpressionAttributeValues: { ":name": Name },
+  };
+
+  const data = await dynamoDB.scan(params).promise();
+  if (!data.Items || data.Items.length === 0) {
+    return "1.0.0"; // Default version if no packages exist for the Name
+  }
+
+  // Extract and sort versions
+  const versions = data.Items.map((item) => item.Version).sort((a, b) => {
+    const [aMajor, aMinor, aPatch] = a.split(".").map(Number);
+    const [bMajor, bMinor, bPatch] = b.split(".").map(Number);
+
+    if (aMajor !== bMajor) return bMajor - aMajor;
+    if (aMinor !== bMinor) return bMinor - aMinor;
+    return bPatch - aPatch;
+  });
+
+  // Calculate the next version with rollover
+  const [major, minor, patch] = versions[0].split(".").map(Number);
+
+  if (patch < 9) {
+    return `${major}.${minor}.${patch + 1}`;
+  } else if (minor < 9) {
+    return `${major}.${minor + 1}.0`;
+  } else {
+    return `${major + 1}.0.0`;
+  }
+}
 
 // Helper function for debloating
 async function debloatContent(contentBuffer) {
