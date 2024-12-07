@@ -47,6 +47,12 @@
                 debloat: formData.has('debloat') // Boolean value based on checkbox state 
             };
 
+            document.getElementById('display-name').textContent = `Name: ${data.Name}`;
+            document.getElementById('display-version').textContent = `Version: ${data.Version}`;
+            document.getElementById('display-content').textContent = `Content: ${data.Content}`;
+            document.getElementById('display-jsprogram').textContent = data.JSProgram;
+            document.getElementById('display-debloat').textContent = `Debloat: ${data.debloat ? 'Yes' : 'No'}`;
+
             try { 
                 const response = await fetch(form.action, { 
                     method: 'POST', 
