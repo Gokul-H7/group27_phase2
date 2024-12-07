@@ -58,20 +58,9 @@ exports.handler = async (event) => {
   }
 
   try {
-    // If Version is not provided, fetch the latest version from DynamoDB
+    // Determine version if not provided
     if (!Version) {
-      Version = await getLatestVersion(Name);
-      if (!Version) {
-        return {
-          statusCode: 400,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            { error: "No existing versions found for the provided Name. Please specify a Version." },
-            null,
-            2
-          ),
-        };
-      }
+      Version = await getNextVersion(Name);
     }
 
     const PackageID = `${Name}-${Version}`;
@@ -84,14 +73,14 @@ exports.handler = async (event) => {
       ID: PackageID.toLowerCase(),
     };
 
-    // Check if the package already exists in DynamoDB
+    // Check if the package with the same PackageID already exists
     const exists = await checkPackageExists(PackageID, Version);
     if (exists) {
       return {
         statusCode: 409,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          { error: "Package exists already." },
+          { error: "Package already exists with the same Name and Version." },
           null,
           2
         ),
@@ -175,8 +164,8 @@ exports.handler = async (event) => {
   }
 };
 
-// Helper function to get the latest version from DynamoDB
-async function getLatestVersion(Name) {
+// Helper function to determine the next version
+async function getNextVersion(Name) {
   const params = {
     TableName: "Packages",
     FilterExpression: "#name = :name",
@@ -186,10 +175,10 @@ async function getLatestVersion(Name) {
 
   const data = await dynamoDB.scan(params).promise();
   if (!data.Items || data.Items.length === 0) {
-    return null;
+    return "1.0.0"; // Default version if no packages exist for the Name
   }
 
-  // Extract and sort the versions
+  // Extract and sort versions
   const versions = data.Items.map((item) => item.Version).sort((a, b) => {
     const [aMajor, aMinor, aPatch] = a.split(".").map(Number);
     const [bMajor, bMinor, bPatch] = b.split(".").map(Number);
@@ -199,7 +188,10 @@ async function getLatestVersion(Name) {
     return bPatch - aPatch;
   });
 
-  return versions[0]; // Return the latest version
+  // Calculate the next version
+  const [major, minor, patch] = versions[0].split(".").map(Number);
+  const nextPatch = patch + 1;
+  return `${major}.${minor}.${nextPatch}`;
 }
 
 
