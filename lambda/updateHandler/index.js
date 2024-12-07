@@ -51,8 +51,21 @@ exports.handler = async (event) => {
 
     const finalName = newName || existingPackage.Metadata.Name;
 
+    // Fetch all versions of the package
+    const allVersions = await getAllVersions(finalName);
+
+    // Validate the provided version number
+    if (newVersion && !isValidNewVersion(newVersion, allVersions)) {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          error: `Provided version (${newVersion}) is invalid. Older patch versions are not allowed.`,
+        }),
+      };
+    }
+
     // Determine the final URL and Content
-    // Prioritize the input values, fallback to existing package values if neither is provided
     const finalURL = URL || (Content ? null : existingPackage.Metadata.URL);
     const finalContent = Content || (URL ? null : existingPackage.Metadata.Content);
 
@@ -91,7 +104,6 @@ exports.handler = async (event) => {
   }
 };
 
-
 // Check if the package exists (without requiring Version)
 async function doesPackageExist(id) {
   const params = {
@@ -109,36 +121,44 @@ async function doesPackageExist(id) {
   }
 }
 
-// Fetch the next version of a package
-async function getNextVersion(id) {
+// Fetch all versions of a package
+async function getAllVersions(Name) {
   const params = {
     TableName: 'Packages',
-    KeyConditionExpression: 'PackageID = :packageID',
-    ExpressionAttributeValues: { ':packageID': id },
+    FilterExpression: "#name = :name",
+    ExpressionAttributeNames: { "#name": "Name" },
+    ExpressionAttributeValues: { ":name": Name },
   };
 
-  const data = await dynamoDB.query(params).promise();
-  if (!data.Items || data.Items.length === 0) {
-    return "1.0.0"; // Default version if no versions exist
-  }
-
-  // Sort versions numerically
-  const versions = data.Items.map((item) => item.Version).sort((a, b) => {
-    const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
-    const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
-
-    if (aMajor !== bMajor) return bMajor - aMajor;
-    if (aMinor !== bMinor) return bMinor - aMinor;
-    return bPatch - aPatch;
-  });
-
-  // Extract the latest version
-  const [major, minor, patch] = versions[0].split('.').map(Number);
-
-  // Increment the patch version
-  return `${major}.${minor}.${patch + 1}`;
+  const data = await dynamoDB.scan(params).promise();
+  return data.Items ? data.Items.map((item) => item.Version) : [];
 }
 
+// Validate the provided version against existing versions
+function isValidNewVersion(newVersion, allVersions) {
+  const [newMajor, newMinor, newPatch] = newVersion.split('.').map(Number);
+
+  // Check if a higher patch version exists in the same major and minor combination
+  const sameMajorMinorVersions = allVersions.filter((version) => {
+    const [major, minor] = version.split('.').map(Number);
+    return major === newMajor && minor === newMinor;
+  });
+
+  if (sameMajorMinorVersions.length > 0) {
+    const latestPatch = Math.max(...sameMajorMinorVersions.map((version) => {
+      const [, , patch] = version.split('.').map(Number);
+      return patch;
+    }));
+
+    // Reject if the provided patch version is less than or equal to the latest patch
+    if (newPatch <= latestPatch) {
+      return false;
+    }
+  }
+
+  // Allow any version that doesn't violate the patch restriction
+  return true;
+}
 
 // Send the upload request
 async function sendUploadRequest(uploadRequestBody) {
