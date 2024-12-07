@@ -30,11 +30,20 @@
         <label for = "debloat">Please select if you would like to debloat the module</label>
         <input type = "checkbox" id = "debloat" name = "debloat"> <br><br>
 
-        <input type = "hidden" id = "URL" name = "URL" 
-        value = false> <br><br>
+        <!-- <input type = "hidden" id = "URL" name = "URL" 
+        value = false> <br><br> -->
 
         <input type="submit" value="Upload"> 
     </form>
+
+    <div id="result"> 
+        <h2>Form Data:</h2> 
+        <p id="display-name"></p> 
+        <p id="display-version"></p> 
+        <p id="display-content"></p> 
+        <pre id="display-jsprogram"></pre> 
+        <p id="display-debloat"></p> 
+    </div>
 
     <script> 
         document.getElementById('upload-form').addEventListener('submit', async function(event) 
@@ -48,7 +57,7 @@
                 Content: formData.get('content'), 
                 JSProgram: formData.get('jsprogram'), 
                 debloat: formData.has('debloat'), // Boolean value based on checkbox state 
-                URL: formData.get('URL')
+                // URL: formData.get('URL')
             };
 
             document.getElementById('display-name').textContent = `Name: ${data.Name}`;
