@@ -8,7 +8,7 @@
 
 <body>
     <h1> Upload Page </h1>
-    <form action="https://7bbav0i1xd.execute-api.us-east-2.amazonaws.com/dev/package" method="post" enctype="multipart/form-data"> 
+    <form id = "upload-form" action="https://7bbav0i1xd.execute-api.us-east-2.amazonaws.com/dev/package" method="post" enctype="multipart/form-data"> 
         <label for="Name">File Name:</label> 
         <input type="text" id="Name" name="Name" required><br><br>
 
@@ -16,8 +16,7 @@
         <input type="text" id="version" name="version" required><br><br>
         
         <label for="content">Choose a file:</label> 
-        <input type="file" id="content" name="content"> 
-        <br><br> 
+        <input type="file" id="content" name="content" required><br><br> 
         
         <input type = "hidden" id = "JSProgram" name = "JSProgram" 
         value = "if (process.argv.length === 7) {\nconsole.log('Success')\nprocess.exit(0)\n} else {\nconsole.log('Failed')\nprocess.exit(1)\n}\n"> <br><br>
@@ -41,13 +40,13 @@
                 Name: formData.get('Name'), 
                 Version: formData.get('version'), 
                 Content: formData.get('content'), 
-                JSProgram: formData.get('jsprogram'), 
+                JSProgram: formData.get('JSProgram'), 
                 debloat: formData.has('debloat'), // Boolean value based on checkbox state 
                 // URL: formData.get('URL')
             };
 
             try { 
-                const response = await fetch(form.action, { 
+                const response = await fetch(event.target.action, { 
                     method: 'POST', 
                     headers: { 
                         'Content-Type': 'application/json' 
