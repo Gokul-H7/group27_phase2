@@ -111,7 +111,7 @@ exports.handler = async (event) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           {
-            metadata,
+            metadata: { Name, Version, ID: PackageID },
             data: {
               URL,
               Content: base64Content,
@@ -137,7 +137,7 @@ exports.handler = async (event) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           {
-            metadata,
+            metadata: { Name, Version, ID: PackageID },
             data: {
               Content,
               JSProgram,
