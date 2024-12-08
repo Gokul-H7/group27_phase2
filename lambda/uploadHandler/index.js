@@ -9,13 +9,20 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 exports.handler = async (event) => {
   let body;
 
+  const headersCheck = { 
+    "Access-Control-Allow-Origin": "*", // Allow all origins 
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS, DELETE", 
+    "Access-Control-Allow-Headers": "Content-Type", 
+    "Access-Control-Allow-Credentials": true 
+  };
+
   // Parse the event body
   try {
     body = JSON.parse(event.body); // Parse the incoming JSON
   } catch (error) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
+      headersCheck: { "Content-Type": "application/json" },
       body: JSON.stringify({ error: "Invalid JSON format" }, null, 2),
     };
   }
@@ -28,7 +35,7 @@ exports.handler = async (event) => {
   if (!URL && !Content) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
+      headersCheck: { "Content-Type": "application/json" },
       body: JSON.stringify(
         { error: "Either URL or Content must be provided" },
         null,
@@ -40,7 +47,7 @@ exports.handler = async (event) => {
   if (URL && Content) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "application/json" },
+      headersCheck: { "Content-Type": "application/json" },
       body: JSON.stringify(
         { error: "Both URL and Content cannot be provided at the same time. Provide only one." },
         null,
@@ -59,7 +66,7 @@ exports.handler = async (event) => {
     if (!Name) {
       return {
         statusCode: 400,
-        headers: { "Content-Type": "application/json" },
+        headersCheck: { "Content-Type": "application/json" },
         body: JSON.stringify({ error: "Missing required fields: Name" }, null, 2),
       };
     }
@@ -84,7 +91,7 @@ exports.handler = async (event) => {
     if (exists) {
       return {
         statusCode: 409,
-        headers: { "Content-Type": "application/json" },
+        headersCheck: { "Content-Type": "application/json" },
         body: JSON.stringify(
           { error: "Package already exists with the same Name and Version." },
           null,
@@ -98,7 +105,7 @@ exports.handler = async (event) => {
       if (!URL.includes('github.com') && !URL.includes('npmjs.com')) {
         return {
           statusCode: 400,
-          headers: { "Content-Type": "application/json" },
+          headersCheck: { "Content-Type": "application/json" },
           body: JSON.stringify(
             { error: "URL must be a valid GitHub or npmjs.com link" },
             null,
@@ -114,7 +121,7 @@ exports.handler = async (event) => {
 
       return {
         statusCode: 201,
-        headers: { "Content-Type": "application/json" },
+        headersCheck: { "Content-Type": "application/json" },
         body: JSON.stringify(
           {
             metadata: { Name, Version, ID: PackageID },
@@ -140,7 +147,7 @@ exports.handler = async (event) => {
 
       return {
         statusCode: 201,
-        headers: { "Content-Type": "application/json" },
+        headersCheck: { "Content-Type": "application/json" },
         body: JSON.stringify(
           {
             metadata: { Name, Version, ID: PackageID },
@@ -157,7 +164,7 @@ exports.handler = async (event) => {
   } catch (error) {
     return {
       statusCode: 500,
-      headers: { "Content-Type": "application/json" },
+      headersCheck: { "Content-Type": "application/json" },
       body: JSON.stringify(
         {
           error: "Failed to process package",
