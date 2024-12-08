@@ -5,6 +5,12 @@
     <meta name="description" content="An upload to the s3"> 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <style>
+        body { 
+           font-family: Arial, sans-serif; 
+       } 
+   </style>
+
 </head>
 
 <body>
@@ -81,10 +87,22 @@
                 } 
             }
 
+            function handleCheckboxKeyPress(event) { 
+                if (event.key === "Enter") { 
+                    event.preventDefault(); // Prevent default Enter key behavior 
+                    event.target.checked = !event.target.checked; // Toggle the checkbox state 
+                } 
+            }
+
             // Attach keypress event listener to all input fields in the form 
-            const inputs = document.querySelectorAll("#my-form input[type='submit'], #my-form input[type='checkbox']"); 
+            const inputs = document.querySelectorAll("#my-form input[type='submit']"); 
             inputs.forEach(input => { 
                 input.addEventListener("keypress", handleKeyPress); 
+            });
+
+            const checkboxes = document.querySelectorAll("#my-form input[type='checkbox']"); 
+            checkboxes.forEach(checkbox => { 
+                checkbox.addEventListener("keypress", handleCheckboxKeyPress); 
             });
 
     </script>
