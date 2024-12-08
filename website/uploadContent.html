@@ -95,12 +95,12 @@
             }
 
             // Attach keypress event listener to all input fields in the form 
-            const inputs = document.querySelectorAll("#my-form input[type='submit']"); 
+            const inputs = document.querySelectorAll("#upload-form input[type='submit']"); 
             inputs.forEach(input => { 
                 input.addEventListener("keypress", handleKeyPress); 
             });
 
-            const checkboxes = document.querySelectorAll("#my-form input[type='checkbox']"); 
+            const checkboxes = document.querySelectorAll("#upload-form input[type='checkbox']"); 
             checkboxes.forEach(checkbox => { 
                 checkbox.addEventListener("keypress", handleCheckboxKeyPress); 
             });
