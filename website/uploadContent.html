@@ -74,6 +74,19 @@
             }); 
         }
 
+        function handleKeyPress(event) { 
+            if (event.key === "Enter") { 
+                event.preventDefault(); // Prevent default Enter key behavior 
+                document.getElementById("upload-form").submit(); // Submit the form 
+                } 
+            }
+
+            // Attach keypress event listener to all input fields in the form 
+            const inputs = document.querySelectorAll("#my-form input[type='submit']"); 
+            inputs.forEach(input => { 
+                input.addEventListener("keypress", handleKeyPress); 
+            });
+
     </script>
 </body>
 </html>
