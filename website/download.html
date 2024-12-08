@@ -45,10 +45,13 @@
             console.log('Success:', result); 
 
             const responseContainer = document.getElementById('response-container'); 
-            responseContainer.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`; 
-
-        } catch (error) { 
-            console.error('Error:', error); } 
+            responseContainer.innerHTML = ` <h3>Response Data:</h3> 
+            <p><strong>Version:</strong> ${result.Version}</p> 
+            <p><strong>Name:</strong> ${result.Name}</p> 
+            <p><strong>ID:</strong> ${result.ID}</p> 
+            `; 
+        } catch (error) { console.error('Error:', error); const responseContainer = document.getElementById('response-container'); 
+            responseContainer.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`; }
         });
     </script>
 </body>
