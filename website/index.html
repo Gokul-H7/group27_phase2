@@ -27,6 +27,12 @@
         .linkButton:hover {
             background-color: #338e37
         } 
+
+        .linkButton:focus { 
+            background-color: #1ad130; 
+        /* outline: 2px solid #333; 
+        outline-offset: 2px;  */
+        }
         
         .linkButton:active { background-color: #2b672e; 
             box-shadow: 0 5px #2b4326; 
@@ -75,8 +81,8 @@
     <h1>ACME Module Repository</h1>
     <div class="container"> 
         <h3>Please select which action you'd like to take</h3>
-        <button class="linkButton" id="uploadButton" onclick="window.location.href='https://acme-website-27.s3.us-east-2.amazonaws.com/upload.html'">Upload</button> 
-        <button class="linkButton" id="downloadButton" onclick="window.location.href='https://acme-website-27.s3.us-east-2.amazonaws.com/download.html'">Download</button>
+        <button class="linkButton" id="uploadButton" tabindex="0" onclick="window.location.href='https://acme-website-27.s3.us-east-2.amazonaws.com/upload.html'">Upload</button> 
+        <button class="linkButton" id="downloadButton" tabindex="0" onclick="window.location.href='https://acme-website-27.s3.us-east-2.amazonaws.com/download.html'">Download</button>
     </div>
 </body>
 </html>
