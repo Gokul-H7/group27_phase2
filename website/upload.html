@@ -34,6 +34,12 @@
             transform: translateY(4px); 
         }
 
+        .linkButton:focus { 
+            background-color: #1ad130; 
+        outline: 2px solid #333; 
+        outline-offset: 2px;  
+        }
+
         #URLButton{
             position: absolute;
             top: 50px;
@@ -79,8 +85,8 @@
     <h2>Select how you would like to upload your module</h2>
     <div class="container"> 
         <h3>Please select how you'd like to upload your module</h3>
-        <a href = "https://acme-website-27.s3.us-east-2.amazonaws.com/uploadURL.html" class = "linkButton" id="URLButton">Click for URL</a>
-        <a href = "https://acme-website-27.s3.us-east-2.amazonaws.com/uploadContent.html" class = "linkButton" id="ContentButton">Click to Upload</a>
+        <button class="linkButton" id="URLButton" tabindex="0" onclick="window.location.href='https://acme-website-27.s3.us-east-2.amazonaws.com/uploadURL.html'">Click for URL</button> 
+        <button class="linkButton" id="ContentButton" tabindex="0" onclick="window.location.href='https://acme-website-27.s3.us-east-2.amazonaws.com/uploadContent.html'">Click to Upload</button>
     </div>
 
 </body>

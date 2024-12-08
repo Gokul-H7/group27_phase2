@@ -34,6 +34,12 @@
         transform: translateY(4px); 
     }
 
+    .linkButton:focus { 
+            background-color: #1ad130; 
+        outline: 2px solid #333; 
+        outline-offset: 2px;  
+        }
+
 </style>
 </head>
 
@@ -52,7 +58,7 @@
 
     <div id="response-container"></div>
     
-    <a href = "https://acme-website-27.s3.us-east-2.amazonaws.com/delete.html" class = "linkButton">Press to Delete all Modules</a>
+    <button class="linkButton" tabindex="0" onclick="window.location.href='https://acme-website-27.s3.us-east-2.amazonaws.com/delete.html'">Press to Delete all Modules</button> 
 
     <script>
     document.getElementById('upload-form').addEventListener('submit', async function(event) 
