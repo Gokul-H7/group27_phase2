@@ -1,0 +1,62 @@
+<head>
+    <title>ACME Module Repository</title>
+    <meta charset="UTF-8"> 
+    <meta name="description" content="An upload to the s3"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+</head>
+
+<body>
+    <h1>ACME Module Repository</h1>
+    <h2>Please input the module you would like to delete</h2>
+    <h3>Alert! This action cannot be undone!</h3>
+    <form id = "upload-form" action="https://7bbav0i1xd.execute-api.us-east-2.amazonaws.com/dev/reset" method="delete" enctype="multipart/form-data"> 
+        <label for="Name">File Name:</label> 
+        <input type="text" id="Name" name="Name" required><br><br>
+
+        <label for="version">Version:</label> 
+        <input type="text" id="version" name="version" required><br><br>
+
+        <input type="submit" value="Upload"> 
+    </form>
+    
+    <script>
+        document.getElementById('upload-form').addEventListener('submit', async function(event) 
+            { event.preventDefault(); 
+                //const form = event.target; 
+                const formData = new FormData(event.target); 
+    
+                const data = { 
+                    Name: formData.get('Name'), 
+                    Version: formData.get('version'), 
+                };
+    
+                try { 
+                    const response = await fetch(event.target.action, { 
+                        method: 'DELETE', 
+                        headers: { 
+                            'Content-Type': 'application/json' 
+                        },
+                        body: JSON.stringify(data) // Convert JSON object to string
+                }); 
+                        
+                const result = await response.json(); 
+                console.log('Success:', result); 
+    
+                const responseContainer = document.getElementById('response-container'); 
+                responseContainer.innerHTML = ` <h3>Response Data:</h3> 
+                <p><strong>Version:</strong> ${result.Version}</p> 
+                <p><strong>Name:</strong> ${result.Name}</p> 
+                <p><strong>ID:</strong> ${result.ID}</p> 
+                `; 
+            } catch (error) { console.error('Error:', error); const responseContainer = document.getElementById('response-container'); 
+                responseContainer.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`; }
+            });
+        </script>
+
+
+
+    <h2>Press the button below if you're sure you wish to delete all of the modules.</h2>
+    <h3>Warning! This action cannot be undone. Make sure you want to do this!</h3>
+
+</body>
