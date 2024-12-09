@@ -5,6 +5,8 @@ import { calculateCorrectness } from './metrics/correctness.js';
 import { calculateResponsiveMaintainer } from './metrics/responsiveMaintainer.js';
 import { calculateRampUp } from './metrics/rampUp.js';
 import { calculateLicenseCompatibility } from './metrics/license.js';
+import { calculateGoodPinningPractice } from './metrics/goodPinningPractice.js';
+import { calculatePullRequestReviewFraction } from './metrics/pullRequest.js';
 import { logInfo, logDebug, logError } from './logger.js';  
 
 // Extract workerData (owner, repo, repoURL)
@@ -27,12 +29,14 @@ async function calculateWithLatency<T>(calculationFn: () => Promise<T>): Promise
 
     try {
         logInfo(`Calculating metrics for repository ${owner}/${repo}...`);
-        const [busFactorResult, correctnessResult, rampUpResult, responsiveMaintainerResult, licenseResult] = await Promise.all([
+        const [busFactorResult, correctnessResult, rampUpResult, responsiveMaintainerResult, licenseResult, goodPinningPracticeResult, pullRequestsResult] = await Promise.all([
             calculateWithLatency(() => calculateBusFactor(owner, repo)),
             calculateWithLatency(() => calculateCorrectness(repoPath, owner, repo)),
             calculateWithLatency(() => calculateRampUp(repoPath)),
             calculateWithLatency(() => calculateResponsiveMaintainer(owner, repo)),
             calculateWithLatency(() => calculateLicenseCompatibility(repoPath)),
+            calculateWithLatency(() => calculateGoodPinningPractice(owner, repo)),
+            calculateWithLatency(() => calculatePullRequestReviewFraction(owner, repo)),
         ]);
 
         const netScore = 0.25 * busFactorResult.value + 
@@ -57,6 +61,10 @@ async function calculateWithLatency<T>(calculationFn: () => Promise<T>): Promise
             ResponsiveMaintainer_Latency: responsiveMaintainerResult.latency,
             License: licenseResult.value,
             License_Latency: licenseResult.latency,
+            GoodPinningPractice: goodPinningPracticeResult.value,
+            GoodPinningPractice_Latency: goodPinningPracticeResult.latency,
+            PullRequests: pullRequestsResult.value,
+            PullRequests_Latency: pullRequestsResult.latency,
         };
 
         // Return result to main thread

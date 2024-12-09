@@ -165,3 +165,40 @@ export async function cleanUpRepository(repoPath: string): Promise<void> {
         throw err;
     }
 }
+
+// Get pull requests for a repository
+export async function getRepoPullRequests(owner: string, repo: string) {
+    try {
+        logInfo(`Fetching pull requests for ${owner}/${repo}`);
+        const octokit = getOctokitInstance();
+        const { data } = await octokit.rest.pulls.list({
+            owner,
+            repo,
+            state: 'all', // Fetch both open and closed pull requests
+            per_page: 100, // Fetch maximum of 100 pull requests
+        });
+        return data;
+    } catch (error) {
+        const err = error as Error;
+        logError(`Error fetching pull requests for ${owner}/${repo}: ${err.message}`);
+        throw err;
+    }
+}
+
+// Get pull request reviews for a specific pull request
+export async function getPullRequestReviews(owner: string, repo: string, pullRequestNumber: number) {
+    try {
+        logInfo(`Fetching reviews for pull request #${pullRequestNumber} in ${owner}/${repo}`);
+        const octokit = getOctokitInstance();
+        const { data } = await octokit.rest.pulls.listReviews({
+            owner,
+            repo,
+            pull_number: pullRequestNumber,
+        });
+        return data;
+    } catch (error) {
+        const err = error as Error;
+        logError(`Error fetching reviews for pull request #${pullRequestNumber} in ${owner}/${repo}: ${err.message}`);
+        throw err;
+    }
+}

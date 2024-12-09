@@ -6,6 +6,8 @@ import { calculateCorrectness } from './metrics/correctness.js';
 import { calculateResponsiveMaintainer } from './metrics/responsiveMaintainer.js';
 import { calculateRampUp } from './metrics/rampUp.js';
 import { calculateLicenseCompatibility } from './metrics/license.js';
+import { calculateGoodPinningPractice } from './metrics/goodPinningPractice.js';
+import { calculatePullRequestReviewFraction } from './metrics/pullRequest.js';
 
 // Worker script path for parallel execution
 const WORKER_SCRIPT_PATH = path.resolve(__dirname, 'metricsWorker.js');
@@ -18,6 +20,8 @@ interface PackageMetrics {
     BusFactor: number;
     ResponsiveMaintainer: number;
     LicenseCompatibility: number;
+    GoodPinningPractice: number;
+    PullRequests: number;
     FinalScore: number;
 }
 
@@ -37,11 +41,13 @@ function runWorker(workerData: any): Promise<PackageMetrics> {
 function calculateFinalScore(metrics: PackageMetrics): number {
     // Assign weights to each metric (this can be adjusted based on importance)
     const weights = {
-        RampUp: 0.20,
-        Correctness: 0.20,
-        BusFactor: 0.25,
-        ResponsiveMaintainer: 0.25,
+        RampUp: 0.15,
+        Correctness: 0.15,
+        BusFactor: 0.20,
+        ResponsiveMaintainer: 0.20,
         LicenseCompatibility: 0.10,
+        GoodPinningPractice: 0.10,
+        PullRequests: 0.10,
     };
 
     // Weighted sum of all metrics to get the final score
@@ -49,7 +55,9 @@ function calculateFinalScore(metrics: PackageMetrics): number {
                       (metrics.Correctness * weights.Correctness) +
                       (metrics.BusFactor * weights.BusFactor) +
                       (metrics.ResponsiveMaintainer * weights.ResponsiveMaintainer) +
-                      (metrics.LicenseCompatibility * weights.LicenseCompatibility);
+                      (metrics.LicenseCompatibility * weights.LicenseCompatibility) +
+                      (metrics.GoodPinningPractice * weights.GoodPinningPractice) +
+                      (metrics.PullRequests * weights.PullRequests);
 
     return parseFloat(NetScore.toFixed(2)); // Round to 2 decimal places
 }
