@@ -39,11 +39,13 @@ async function calculateWithLatency<T>(calculationFn: () => Promise<T>): Promise
             calculateWithLatency(() => calculatePullRequestReviewFraction(owner, repo)),
         ]);
 
-        const netScore = 0.25 * busFactorResult.value + 
-                        0.20 * correctnessResult.value + 
-                        0.20 * rampUpResult.value + 
+        const netScore = 0.15 * busFactorResult.value + 
+                        0.15 * correctnessResult.value + 
+                        0.15 * rampUpResult.value + 
                         0.25 * responsiveMaintainerResult.value + 
-                        0.10 * licenseResult.value;
+                        0.10 * licenseResult.value 
+                        0.10 * goodPinningPracticeResult.value +
+                        0.10 * pullRequestsResult.value;
 
         logInfo(`Metrics calculation completed for ${owner}/${repo}. NetScore: ${netScore.toFixed(3)}`);
 

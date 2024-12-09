@@ -43,8 +43,8 @@ function calculateFinalScore(metrics: PackageMetrics): number {
     const weights = {
         RampUp: 0.15,
         Correctness: 0.15,
-        BusFactor: 0.20,
-        ResponsiveMaintainer: 0.20,
+        BusFactor: 0.15,
+        ResponsiveMaintainer: 0.25,
         LicenseCompatibility: 0.10,
         GoodPinningPractice: 0.10,
         PullRequests: 0.10,
