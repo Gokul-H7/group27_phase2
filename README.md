@@ -1,5 +1,5 @@
-# group27_phase2
-ECE 461 phase 2
+# Pakcage Registry
+ECE 461
 Simple Package Registry.
 
 This repository hosts the code used for the lambda functions, frontend, and ratings system used in the implementation of a simple package registry.
